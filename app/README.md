@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Civitas Marketplace Add-on
 
-## Getting Started
+This is a Next.js application that serves as the Central Add-on Marketplace for CivitasCore.
 
-First, run the development server:
+## Local Development Workflow
 
+To achieve the fastest development feedback loop, we run this Next.js app locally (`npm run dev`) against a local Keycloak instance provided by the `civitas-core-platform` Docker Compose stack.
+
+Since we are skipping the automated Helm deployment in this mode, you need to configure the Keycloak Client **manually once**.
+
+### 1. Start the Platform Infrastructure
+Start the local database, Keycloak, and API Gateway using the core platform's dev environment:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd ../civitas-core-platform/dev-environment
+./start-portal-dev.sh --frontend=skip
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Configure Keycloak (Manual Step)
+1. Open Keycloak Admin Console: [http://localhost:8080/admin/](http://localhost:8080/admin/)
+2. Log in with `admin` / `admin`.
+3. Select the **`civitas-core`** Realm in the top left dropdown.
+4. Go to **Clients** -> **Create client**:
+   - **Client ID:** `marketplace-addon`
+   - **Client authentication:** ON
+   - **Valid redirect URIs:** `http://localhost:3000/api/auth/callback/keycloak`
+   - Save the client.
+5. Go to the **Credentials** tab and copy the **Client Secret**.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 3. Configure Local Environment Variables
+Create a `.env.local` file in this `app/` directory and populate it with your copied secret:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```env
+AUTH_SECRET="your-local-random-development-secret-string"
+AUTH_KEYCLOAK_ID="marketplace-addon"
+AUTH_KEYCLOAK_SECRET="<paste-your-client-secret-here>"
+AUTH_KEYCLOAK_ISSUER="http://localhost:8080/realms/civitas-core"
+```
 
-## Learn More
+### 4. Start the Dev Server
+```bash
+npm install
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open [http://localhost:3000](http://localhost:3000). You will be prompted to log in using the Civitas Keycloak instance.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Production Deployment
 
-## Deploy on Vercel
+In a production environment (or when fully testing via `helmfile apply`), the manual Keycloak steps above are **not required**. 
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The Keycloak Client and Client Secret are automatically provisioned by the `keycloak-config-cli` job using the infrastructure-as-code definitions found in `../deployment/keycloak-clients.yaml`. The secret is injected into the container at runtime.
