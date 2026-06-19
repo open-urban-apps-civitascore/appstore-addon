@@ -1,6 +1,4 @@
 ---
 marketplace:
   marketplace:
-    repository: TODO
-    chart: TODO
-    version: TODO
+    chart: charts/marketplace
