@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Open Urban Apps - Catalog Schema",
+  "description": "Schema for the central catalog of available CivitasCore Add-ons and Use Cases",
+  "type": "object",
+  "required": ["version", "updatedAt", "addons"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Version of the catalog schema or data"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "addons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "version",
+          "author",
+          "civitasCoreVersion",
+          "deploymentRef"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 3,
+            "description": "Unique identifier for the add-on (e.g., marketplace-addon)"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human-readable name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Short description of what the add-on does"
+          },
+          "version": {
+            "type": "string",
+            "description": "Semantic version of the add-on"
+          },
+          "author": {
+            "type": "string",
+            "description": "Publisher or maintainer of the add-on"
+          },
+          "iconUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Optional URL to a logo or icon"
+          },
+          "civitasCoreVersion": {
+            "type": "string",
+            "description": "Semver requirement for CivitasCore (e.g., '>=2.1.0')"
+          },
+          "requiredCapabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of required platform capabilities or connectors (e.g., 'MQTT_CONNECTOR', 'FROST_SERVER')"
+          },
+          "deploymentRef": {
+            "type": "object",
+            "required": ["type", "url"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["helm", "git", "bundle"],
+                "description": "The deployment mechanism used to install this add-on"
+              },
+              "url": {
+                "type": "string",
+                "description": "URL to the Helm chart repository or Git repository"
+              },
+              "chartName": {
+                "type": "string",
+                "description": "Name of the chart if type is 'helm'"
+              },
+              "path": {
+                "type": "string",
+                "description": "Path within the repository if type is 'git'"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,58 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-06-20T20:00:00Z",
+  "addons": [
+    {
+      "id": "open-urban-apps-marketplace",
+      "name": "Open Urban Apps Marketplace",
+      "description": "Der zentrale Katalog zum Entdecken und Installieren von CivitasCore Use-Cases und Add-ons.",
+      "version": "0.1.0-alpha",
+      "author": "PrototypeFund Team",
+      "civitasCoreVersion": ">=2.0.0",
+      "requiredCapabilities": [
+        "KEYCLOAK",
+        "APISIX_INGRESS"
+      ],
+      "deploymentRef": {
+        "type": "helm",
+        "url": "https://charts.civitas.test/marketplace",
+        "chartName": "marketplace-addon"
+      }
+    },
+    {
+      "id": "luftqualitaet-dashboard",
+      "name": "Luftqualität (Feinstaub) Dashboard",
+      "description": "Ein fertiges Use-Case-Bündel inklusive FROST-Server Anbindung, Sensitivitäts-Pipelines und einem React-basierten Dashboard zur Visualisierung von PM2.5 und PM10 Messwerten.",
+      "version": "1.2.4",
+      "author": "Stadt Karlsruhe",
+      "civitasCoreVersion": ">=2.1.0",
+      "requiredCapabilities": [
+        "FROST_SERVER",
+        "MQTT_CONNECTOR",
+        "NIFI_PIPELINES"
+      ],
+      "deploymentRef": {
+        "type": "git",
+        "url": "https://github.com/open-urban-apps/luftqualitaet-usecase.git",
+        "path": "deployment/addons/luftqualitaet"
+      }
+    },
+    {
+      "id": "parkraum-manager",
+      "name": "Smart Parking Manager",
+      "description": "Verwaltung von Parkhaus-Belegungen und On-Street-Parking-Sensoren. Enthält automatisierte Benachrichtigungen bei Auslastung über 90%.",
+      "version": "2.0.1",
+      "author": "Smart City Hub",
+      "civitasCoreVersion": ">=2.0.0",
+      "requiredCapabilities": [
+        "POSTGRES_DB",
+        "OPENSEARCH"
+      ],
+      "deploymentRef": {
+        "type": "helm",
+        "url": "https://charts.smartcityhub.test/parking",
+        "chartName": "smart-parking"
+      }
+    }
+  ]
+}
