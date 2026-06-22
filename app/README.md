@@ -22,7 +22,7 @@ cd ../civitas-core-platform/dev-environment
 4. Go to **Clients** -> **Create client**:
    - **Client ID:** `marketplace-addon`
    - **Client authentication:** ON
-   - **Valid redirect URIs:** `http://localhost:3000/api/auth/callback/keycloak`
+   - **Valid redirect URIs:** `http://localhost:3001/api/auth/callback/keycloak`
    - Save the client.
 5. Go to the **Credentials** tab and copy the **Client Secret**.
 
@@ -42,7 +42,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). You will be prompted to log in using the Civitas Keycloak instance.
+Open [http://localhost:3001](http://localhost:3001). You will be prompted to log in using the Civitas Keycloak instance.
 
 ---
 

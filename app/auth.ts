@@ -57,50 +57,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         })
     ],
     callbacks: {
-        // Persist the Keycloak id_token on first login so it can be used as the
-        // id_token_hint for RP-initiated logout later.
         async jwt({ token, account }) {
             if (account) {
-                return { ...token, id_token: account.id_token }
+                token.id_token = account.id_token;
             }
-            return token
+            return token;
         },
-    },
-    events: {
-        // When the local NextAuth session is cleared, also terminate the
-        // Keycloak SSO session (RP-initiated logout). Without this the SSO
-        // session survives, so re-login is silent and the core platform stays
-        // logged in.
-        async signOut(message) {
-            const keycloakIssuer = process.env.AUTH_KEYCLOAK_ISSUER
-            if (!keycloakIssuer) {
-                console.error("AUTH_KEYCLOAK_ISSUER environment variable is not set")
-                return
-            }
-
-            const { token } = message as { token: JWT | null }
-
-            try {
-                const logoutParams = new URLSearchParams({
-                    client_id: process.env.AUTH_KEYCLOAK_ID || "",
-                })
-
-                // id_token_hint lets Keycloak end the session without a
-                // confirmation prompt.
-                if (token?.id_token) {
-                    logoutParams.set("id_token_hint", token.id_token as string)
-                }
-
-                const keycloakLogoutUrl = `${keycloakIssuer}/protocol/openid-connect/logout?${logoutParams.toString()}`
-                const res = await fetch(keycloakLogoutUrl, { method: "GET" })
-                if (!res.ok) {
-                    console.error(
-                        `Keycloak logout returned ${res.status}; SSO session may still be active`,
-                    )
-                }
-            } catch (error) {
-                console.error("Error during Keycloak logout:", error)
-            }
-        },
-    },
+        async session({ session, token }) {
+            // @ts-expect-error - id_token is not typed on session natively
+            session.id_token = token.id_token;
+            return session;
+        }
+    }
 })

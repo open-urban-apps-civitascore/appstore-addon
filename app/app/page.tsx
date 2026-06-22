@@ -1,4 +1,5 @@
-import { auth, signIn, signOut } from "@/app/auth"
+import { auth, signIn, signOut } from "@/auth"
+import { redirect } from "next/navigation"
 import { getCatalog } from "@/lib/getCatalog"
 
 export default async function Home() {
@@ -30,7 +31,25 @@ export default async function Home() {
             <h1 className="text-xl font-bold text-slate-900">Civitas Marketplace</h1>
             <p className="text-sm text-slate-500">Angemeldet als {session.user.name || session.user.email}</p>
           </div>
-          <form action={async () => { "use server"; await signOut() }}>
+          <form action={async () => {
+            "use server";
+            const currentSession = await auth();
+            // @ts-expect-error - id_token injected via callbacks
+            const idToken = currentSession?.id_token;
+
+            // 1. Destroy local NextAuth session
+            await signOut({ redirect: false });
+
+            // 2. Redirect to Keycloak to destroy federated session
+            const issuer = process.env.AUTH_KEYCLOAK_ISSUER;
+            const postLogoutUri = process.env.AUTH_URL || "http://localhost:3001";
+
+            if (idToken && issuer) {
+              redirect(`${issuer}/protocol/openid-connect/logout?id_token_hint=${idToken}&post_logout_redirect_uri=${encodeURIComponent(postLogoutUri)}`);
+            } else {
+              redirect('/');
+            }
+          }}>
             <button type="submit" className="text-sm text-slate-600 hover:text-slate-900 font-medium">Abmelden</button>
           </form>
         </div>
@@ -53,10 +72,10 @@ export default async function Home() {
                     v{addon.version}
                   </span>
                 </div>
-                
+
                 <p className="text-sm text-slate-500 mb-4">Von: {addon.author}</p>
                 <p className="text-slate-700 mb-6 line-clamp-3">{addon.description}</p>
-                
+
                 {/* Capabilities */}
                 <div className="mb-4">
                   <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Benötigte Capabilities</h4>
@@ -69,7 +88,7 @@ export default async function Home() {
                   </div>
                 </div>
               </div>
-              
+
               <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex items-center justify-between">
                 <span className="text-xs font-medium text-slate-500">CivitasCore {addon.civitasCoreVersion}</span>
                 <a href={`/addon/${addon.id}`} className="text-sm font-semibold text-blue-600 hover:text-blue-800">
