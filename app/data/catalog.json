@@ -1,57 +1,169 @@
 {
-  "version": "1.0.0",
-  "updatedAt": "2026-06-20T20:00:00Z",
+  "version": "2.0.0",
+  "updatedAt": "2026-06-25T00:00:00Z",
   "addons": [
     {
-      "id": "open-urban-apps-marketplace",
-      "name": "Open Urban Apps Marketplace",
-      "description": "Der zentrale Katalog zum Entdecken und Installieren von CivitasCore Use-Cases und Add-ons.",
-      "version": "0.1.0-alpha",
-      "author": "PrototypeFund Team",
-      "civitasCoreVersion": ">=2.0.0",
-      "requiredCapabilities": [
-        "KEYCLOAK",
-        "APISIX_INGRESS"
-      ],
-      "deploymentRef": {
-        "type": "helm",
-        "url": "https://charts.civitas.test/marketplace",
-        "chartName": "marketplace-addon"
-      }
-    },
-    {
-      "id": "luftqualitaet-dashboard",
-      "name": "Luftqualität (Feinstaub) Dashboard",
-      "description": "Ein fertiges Use-Case-Bündel inklusive FROST-Server Anbindung, Sensitivitäts-Pipelines und einem React-basierten Dashboard zur Visualisierung von PM2.5 und PM10 Messwerten.",
-      "version": "1.2.4",
-      "author": "Stadt Karlsruhe",
-      "civitasCoreVersion": ">=2.1.0",
-      "requiredCapabilities": [
-        "FROST_SERVER",
-        "MQTT_CONNECTOR",
-        "NIFI_PIPELINES"
+      "id": "nodered-addon",
+      "name": "NodeRed",
+      "description": "Flow-based programming for the Internet of Things",
+      "author": "bonn-624-dev",
+      "categories": ["Integration", "IoT", "Automation"],
+      "repository": "https://gitlab.com/bonn-624-dev/platform/nodered_addon",
+      "compatibility": [
+        { "coreVersion": "2.0" },
+        { "coreVersion": "2.1" }
       ],
       "deploymentRef": {
         "type": "git",
-        "url": "https://github.com/open-urban-apps/luftqualitaet-usecase.git",
-        "path": "deployment/addons/luftqualitaet"
+        "url": "https://gitlab.com/bonn-624-dev/platform/nodered_addon",
+        "path": "addons/nodered_addon"
       }
     },
     {
-      "id": "parkraum-manager",
-      "name": "Smart Parking Manager",
-      "description": "Verwaltung von Parkhaus-Belegungen und On-Street-Parking-Sensoren. Enthält automatisierte Benachrichtigungen bei Auslastung über 90%.",
-      "version": "2.0.1",
-      "author": "Smart City Hub",
-      "civitasCoreVersion": ">=2.0.0",
-      "requiredCapabilities": [
-        "POSTGRES_DB",
-        "OPENSEARCH"
+      "id": "airflow-addon",
+      "name": "Apache Airflow",
+      "description": "Platform to programmatically author, schedule and monitor workflows",
+      "author": "bonn-624-dev",
+      "categories": ["Workflow", "Analytics", "ETL"],
+      "repository": "https://gitlab.com/bonn-624-dev/platform/airflow_addon",
+      "licenses": {
+        "addon": "European Union Public License 1.2",
+        "tool": "Apache License 2.0"
+      },
+      "compatibility": [
+        { "coreVersion": "2.0", "branch": "main", "lastUpdated": "2026-05-20T11:05:19+02:00" }
+      ],
+      "requiredCapabilities": ["KEYCLOAK", "APISIX_INGRESS"],
+      "deploymentRef": {
+        "type": "git",
+        "url": "https://gitlab.com/bonn-624-dev/platform/airflow_addon",
+        "path": "addons/airflow_addon"
+      }
+    },
+    {
+      "id": "minio-addon",
+      "name": "MinIO",
+      "description": "High Performance Object Storage",
+      "author": "bonn-624-dev",
+      "categories": ["Storage", "S3", "Object Storage"],
+      "repository": "https://gitlab.com/bonn-624-dev/platform/minio_addon",
+      "licenses": {
+        "tool": "GNU Affero General Public License v3.0"
+      },
+      "compatibility": [
+        { "coreVersion": "2.0", "branch": "main", "lastUpdated": "2025-06-26T08:52:07+00:00" },
+        { "coreVersion": "2.1", "branch": "devel-v2.1", "lastUpdated": "2025-11-29T02:26:25+01:00" }
       ],
       "deploymentRef": {
-        "type": "helm",
-        "url": "https://charts.smartcityhub.test/parking",
-        "chartName": "smart-parking"
+        "type": "git",
+        "url": "https://gitlab.com/bonn-624-dev/platform/minio_addon",
+        "path": "addons/minio_addon"
+      }
+    },
+    {
+      "id": "appsmith-addon",
+      "name": "Appsmith",
+      "description": "Build internal tools, CRUD apps and dashboards",
+      "author": "bonn-624-dev",
+      "categories": ["Low-Code", "Dashboard", "Frontend"],
+      "repository": "https://gitlab.com/bonn-624-dev/platform/appsmith_addon",
+      "licenses": {
+        "addon": "European Union Public License 1.2",
+        "tool": "Apache License 2.0"
+      },
+      "compatibility": [
+        { "coreVersion": "2.0", "branch": "main", "lastUpdated": "2026-05-20T11:10:22+02:00" },
+        { "coreVersion": "2.1", "branch": "devel-v2.1", "lastUpdated": "2025-11-29T02:26:37+01:00" }
+      ],
+      "requiredCapabilities": ["APISIX_INGRESS"],
+      "deploymentRef": {
+        "type": "git",
+        "url": "https://gitlab.com/bonn-624-dev/platform/appsmith_addon",
+        "path": "addons/appsmith_addon"
+      }
+    },
+    {
+      "id": "hasura-addon",
+      "name": "Hasura",
+      "description": "Instant GraphQL APIs on your data",
+      "author": "bonn-624-dev",
+      "categories": ["GraphQL", "API", "Database"],
+      "repository": "https://gitlab.com/bonn-624-dev/platform/hasura_addon",
+      "compatibility": [
+        { "coreVersion": "2.1" }
+      ],
+      "deploymentRef": {
+        "type": "git",
+        "url": "https://gitlab.com/bonn-624-dev/platform/hasura_addon",
+        "path": "addons/hasura_addon"
+      }
+    },
+    {
+      "id": "supabase-addon",
+      "name": "Supabase",
+      "description": "Open source Firebase alternative",
+      "author": "tsb-udp",
+      "categories": ["Database", "Authentication", "Storage"],
+      "repository": "https://gitlab.com/tsb-udp/supabase_addon",
+      "licenses": {
+        "tool": "Apache License 2.0"
+      },
+      "compatibility": [
+        { "coreVersion": "2.0", "branch": "main", "lastUpdated": "2025-10-15T18:52:19+02:00" }
+      ],
+      "deploymentRef": {
+        "type": "git",
+        "url": "https://gitlab.com/tsb-udp/supabase_addon",
+        "path": "addons/supabase_addon"
+      }
+    },
+    {
+      "id": "outline-addon",
+      "name": "Outline",
+      "description": "Wiki and knowledge base for growing teams",
+      "author": "bonn-624-dev",
+      "categories": ["Documentation", "Wiki", "Knowledge Base"],
+      "repository": "https://gitlab.com/bonn-624-dev/platform/outline_addon",
+      "compatibility": [
+        { "coreVersion": "2.0" },
+        { "coreVersion": "2.1" }
+      ],
+      "deploymentRef": {
+        "type": "git",
+        "url": "https://gitlab.com/bonn-624-dev/platform/outline_addon",
+        "path": "addons/outline_addon"
+      }
+    },
+    {
+      "id": "opensearch-addon",
+      "name": "OpenSearch",
+      "description": "Open source distributed search & analytics suite",
+      "author": "bonn-624-dev",
+      "categories": ["Search", "Analytics", "Logging"],
+      "repository": "https://gitlab.com/bonn-624-dev/platform/opensearch_addon",
+      "compatibility": [
+        { "coreVersion": "2.0" }
+      ],
+      "deploymentRef": {
+        "type": "git",
+        "url": "https://gitlab.com/bonn-624-dev/platform/opensearch_addon",
+        "path": "addons/opensearch_addon"
+      }
+    },
+    {
+      "id": "geonetwork-addon",
+      "name": "GeoNetwork",
+      "description": "Catalog application to manage spatially referenced resources",
+      "author": "bonn-624-dev",
+      "categories": ["GIS", "Metadata", "Catalog"],
+      "repository": "https://gitlab.com/bonn-624-dev/platform/geonetwork_addon",
+      "compatibility": [
+        { "coreVersion": "2.0" }
+      ],
+      "deploymentRef": {
+        "type": "git",
+        "url": "https://gitlab.com/bonn-624-dev/platform/geonetwork_addon",
+        "path": "addons/geonetwork_addon"
       }
     }
   ]

@@ -1,9 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Open Urban Apps - Catalog Schema",
-  "description": "Schema for the central catalog of available CivitasCore Add-ons and Use Cases",
   "type": "object",
-  "required": ["version", "updatedAt", "addons"],
   "properties": {
     "version": {
       "type": "string",
@@ -11,26 +8,18 @@
     },
     "updatedAt": {
       "type": "string",
-      "format": "date-time"
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
     },
     "addons": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "description",
-          "version",
-          "author",
-          "civitasCoreVersion",
-          "deploymentRef"
-        ],
         "properties": {
           "id": {
             "type": "string",
             "minLength": 3,
-            "description": "Unique identifier for the add-on (e.g., marketplace-addon)"
+            "description": "Unique identifier for the add-on (e.g., airflow-addon)"
           },
           "name": {
             "type": "string",
@@ -41,58 +30,125 @@
             "type": "string",
             "description": "Short description of what the add-on does"
           },
-          "version": {
-            "type": "string",
-            "description": "Semantic version of the add-on"
-          },
           "author": {
             "type": "string",
-            "description": "Publisher or maintainer of the add-on"
+            "description": "Publisher or maintainer of the add-on (currently the source repository namespace)"
           },
-          "iconUrl": {
-            "type": "string",
-            "format": "uri",
-            "description": "Optional URL to a logo or icon"
-          },
-          "civitasCoreVersion": {
-            "type": "string",
-            "description": "Semver requirement for CivitasCore (e.g., '>=2.1.0')"
-          },
-          "requiredCapabilities": {
+          "categories": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "List of required platform capabilities or connectors (e.g., 'MQTT_CONNECTOR', 'FROST_SERVER')"
+            "description": "Free-form classification tags shown in the UI (e.g., 'Workflow', 'Storage')"
+          },
+          "repository": {
+            "description": "URL of the add-on's source repository",
+            "type": "string",
+            "format": "uri"
+          },
+          "iconUrl": {
+            "description": "Optional URL to a logo or icon",
+            "type": "string",
+            "format": "uri"
+          },
+          "licenses": {
+            "description": "Licenses shown in the UI: the add-on integration's own license and the wrapped tool's license",
+            "type": "object",
+            "properties": {
+              "addon": {
+                "description": "License of the add-on integration itself (e.g., 'European Union Public License 1.2')",
+                "type": "string"
+              },
+              "tool": {
+                "description": "License of the wrapped upstream tool (e.g., 'Apache License 2.0')",
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "compatibility": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "coreVersion": {
+                  "type": "string",
+                  "description": "Supported CivitasCore version (e.g., '1.2')"
+                },
+                "branch": {
+                  "description": "Git branch that supports this Core version (e.g., 'main', 'devel-v1.3')",
+                  "type": "string"
+                },
+                "lastUpdated": {
+                  "description": "Timestamp this branch was last updated",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "coreVersion"
+              ],
+              "additionalProperties": false
+            },
+            "description": "One entry per supported CivitasCore version, tracked per Git branch"
+          },
+          "requiredCapabilities": {
+            "description": "List of required platform capabilities or connectors (e.g., 'KEYCLOAK', 'APISIX_INGRESS')",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "deploymentRef": {
             "type": "object",
-            "required": ["type", "url"],
             "properties": {
               "type": {
                 "type": "string",
-                "enum": ["helm", "git", "bundle"],
+                "enum": [
+                  "helm",
+                  "git",
+                  "bundle"
+                ],
                 "description": "The deployment mechanism used to install this add-on"
               },
               "url": {
                 "type": "string",
+                "format": "uri",
                 "description": "URL to the Helm chart repository or Git repository"
               },
               "chartName": {
-                "type": "string",
-                "description": "Name of the chart if type is 'helm'"
+                "description": "Name of the chart if type is 'helm'",
+                "type": "string"
               },
               "path": {
-                "type": "string",
-                "description": "Path within the repository if type is 'git'"
+                "description": "Path within the repository if type is 'git'",
+                "type": "string"
               }
             },
+            "required": [
+              "type",
+              "url"
+            ],
             "additionalProperties": false
           }
         },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "author",
+          "categories",
+          "compatibility",
+          "deploymentRef"
+        ],
         "additionalProperties": false
       }
     }
   },
+  "required": [
+    "version",
+    "updatedAt",
+    "addons"
+  ],
   "additionalProperties": false
 }
