@@ -3,9 +3,9 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { getUseCaseById } from "@/lib/getUseCases";
 import {
-  getDataSetForUseCase,
   getDataSetUrlForUseCase,
   ModelForgeError,
+  provisionUseCaseInModelForge,
 } from "@/lib/server/model-forge";
 import { installUseCaseById, removeInstalledUseCaseById } from "@/lib/use-case-installations";
 
@@ -27,26 +27,25 @@ export async function POST(
   }
 
   try {
-    const modelForgeDataSet = await getDataSetForUseCase(useCase);
+    const { dataSet, created } = await provisionUseCaseInModelForge(useCase);
     const importTrace = {
       importedAt: new Date().toISOString(),
       modelForgeRequest: {
-        method: "GET" as const,
+        method: created ? ("POST" as const) : ("GET" as const),
         url: getDataSetUrlForUseCase(useCase),
-        datasetId: useCase.modelForge.datasetId,
+        datasetId: dataSet.id,
       },
-      modelForgeResponse: modelForgeDataSet,
+      modelForgeResponse: dataSet,
       localDraft: {
         createdDataset: {
-          name: modelForgeDataSet.title,
-          description:
-            modelForgeDataSet.description ?? useCase.draftTemplate.dataset.description,
+          name: dataSet.title,
+          description: dataSet.description ?? useCase.draftTemplate.dataset.description,
           openDataAccess: useCase.draftTemplate.dataset.openDataAccess,
           status: "DRAFT" as const,
         },
         createdDataStructures:
-          modelForgeDataSet.dataStructureRefs.length > 0
-            ? modelForgeDataSet.dataStructureRefs.map((entry) => {
+          dataSet.dataStructureRefs.length > 0
+            ? dataSet.dataStructureRefs.map((entry) => {
                 const parts = entry.split(":");
                 return {
                   name: parts.at(-2) ?? entry,
@@ -59,10 +58,17 @@ export async function POST(
               })),
       },
     };
-    const installation = await installUseCaseById(id, modelForgeDataSet, importTrace);
+    const installation = await installUseCaseById(
+      id,
+      dataSet,
+      importTrace,
+      created ? "model-forge-created" : "model-forge-dataset-import",
+    );
 
     return NextResponse.json({
-      message: "Draft dataset imported from Model Forge",
+      message: created
+        ? "Use case provisioned in Model Forge and stored as a local draft"
+        : "Existing Model Forge dataset imported as a local draft",
       installation,
       trace: importTrace,
     });

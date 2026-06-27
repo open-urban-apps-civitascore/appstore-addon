@@ -66,6 +66,7 @@ export async function installUseCaseById(
   useCaseId: string,
   modelForgeDataSet?: ModelForgeDataSet,
   importTrace?: InstalledUseCaseImportTrace,
+  source?: InstalledUseCase["source"],
 ): Promise<InstalledUseCase> {
   const useCase = getUseCaseById(useCaseId);
   if (!useCase) {
@@ -87,7 +88,7 @@ export async function installUseCaseById(
     useCaseTitle: useCase.title,
     installedAt: new Date().toISOString(),
     status: "DRAFT",
-    source: modelForgeDataSet ? "model-forge-dataset-import" : "dummy-marketplace-install",
+    source: source ?? (modelForgeDataSet ? "model-forge-dataset-import" : "dummy-marketplace-install"),
     createdDataset: {
       name: modelForgeDataSet?.title ?? useCase.draftTemplate.dataset.name,
       description: modelForgeDataSet?.description ?? useCase.draftTemplate.dataset.description,
