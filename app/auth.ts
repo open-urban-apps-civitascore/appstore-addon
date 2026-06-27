@@ -1,5 +1,4 @@
 import NextAuth from "next-auth"
-import type { JWT } from "@auth/core/jwt"
 import Keycloak from "next-auth/providers/keycloak"
 
 // The appstore and the CIVITAS core portal both run on `localhost` in dev.

@@ -46,6 +46,10 @@
 }
 
 :root {
+  --font-ibm-plex-sans:
+    "IBM Plex Sans", "Aptos", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-ibm-plex-mono:
+    "IBM Plex Mono", "Cascadia Mono", "SFMono-Regular", "JetBrains Mono", Consolas, monospace;
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

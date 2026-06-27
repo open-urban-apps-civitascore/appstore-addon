@@ -4,7 +4,7 @@ This is a Next.js application that serves as the Central Add-on Marketplace for 
 
 ## Local Development Workflow
 
-To achieve the fastest development feedback loop, we run this Next.js app locally (`npm run dev`) against a local Keycloak instance provided by the `civitas-core-platform` Docker Compose stack.
+To achieve the fastest development feedback loop, we run this Next.js app locally (`pnpm dev`) against a local Keycloak instance provided by the `civitas-core-platform` Docker Compose stack.
 
 Since we are skipping the automated Helm deployment in this mode, you need to configure the Keycloak Client **manually once**.
 
@@ -41,8 +41,8 @@ AUTH_KEYCLOAK_ISSUER="http://localhost:8080/realms/civitas-core"
 
 ### 4. Start the Dev Server
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 Open [http://localhost:3001](http://localhost:3001). You will be prompted to log in using the Civitas Keycloak instance.
