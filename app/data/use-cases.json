@@ -19,7 +19,7 @@
       ],
       "includedArtifacts": [
         {
-          "id": "urn:core:platform:civitas:dataset:demo:tree-register-starter:1.0.0",
+          "id": "urn:core:platform:civitas:dataset:common:Baumkataster-Starter:1.0.0",
           "title": "Tree Register Starter",
           "kind": "dataset",
           "description": "Ein Datensatz-Entwurf für kommunale Baumeinträge."
@@ -32,9 +32,9 @@
         }
       ],
       "modelForge": {
-        "datasetId": "urn:core:platform:civitas:dataset:demo:tree-register-starter:1.0.0",
-        "resolvedDatasetEndpoint": "/api/v1/datasets?id=urn:core:platform:civitas:dataset:demo:tree-register-starter:1.0.0",
-        "note": "Dieser Endpoint existiert bereits in Model Forge und ist der spätere Integrationspunkt."
+        "datasetId": "urn:core:platform:civitas:dataset:common:Baumkataster-Starter:1.0.0",
+        "resolvedDatasetEndpoint": "/api/v1/datasets?id=urn:core:platform:civitas:dataset:common:Baumkataster-Starter:1.0.0",
+        "note": "Dieser Datensatz wird jetzt direkt aus Model Forge gelesen und als lokaler Draft installiert."
       },
       "draftTemplate": {
         "dataset": {

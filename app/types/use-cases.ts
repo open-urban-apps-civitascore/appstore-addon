@@ -28,6 +28,18 @@ export const draftDataStructureTemplateSchema = z.object({
   schema: z.record(z.string(), z.unknown()),
 });
 
+export const modelForgeDataSetSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string().nullish(),
+  version: z.string().nullish(),
+  dataStructureRefs: z.array(z.string()).default([]),
+  dataSourceRefs: z.array(z.string()).default([]),
+  dataSinkRefs: z.array(z.string()).default([]),
+  mappingRefs: z.array(z.string()).default([]),
+  pipelineRefs: z.array(z.string()).default([]),
+});
+
 export const useCaseSchema = z.object({
   id: z.string().min(3),
   title: z.string().min(3),
@@ -54,13 +66,34 @@ export const useCaseCatalogSchema = z.object({
   useCases: z.array(useCaseSchema),
 });
 
+export const installedUseCaseImportTraceSchema = z.object({
+  importedAt: z.string().datetime(),
+  modelForgeRequest: z.object({
+    method: z.literal("GET"),
+    url: z.string(),
+    datasetId: z.string(),
+  }),
+  modelForgeResponse: modelForgeDataSetSchema,
+  localDraft: z.object({
+    createdDataset: draftDatasetTemplateSchema.extend({
+      status: z.literal("DRAFT"),
+    }),
+    createdDataStructures: z.array(
+      z.object({
+        name: z.string(),
+        version: z.string(),
+      }),
+    ),
+  }),
+});
+
 export const installedUseCaseSchema = z.object({
   id: z.string(),
   useCaseId: z.string(),
   useCaseTitle: z.string(),
   installedAt: z.string().datetime(),
   status: z.literal("DRAFT"),
-  source: z.literal("dummy-marketplace-install"),
+  source: z.enum(["dummy-marketplace-install", "model-forge-dataset-import"]),
   createdDataset: draftDatasetTemplateSchema.extend({
     status: z.literal("DRAFT"),
   }),
@@ -71,6 +104,7 @@ export const installedUseCaseSchema = z.object({
     }),
   ),
   modelForge: modelForgeDatasetRefSchema,
+  lastImportTrace: installedUseCaseImportTraceSchema.optional(),
 });
 
 export const installedUseCaseListSchema = z.array(installedUseCaseSchema);
@@ -78,6 +112,13 @@ export const installedUseCaseListSchema = z.array(installedUseCaseSchema);
 export type UseCase = z.infer<typeof useCaseSchema>;
 export type UseCaseCatalog = z.infer<typeof useCaseCatalogSchema>;
 export type InstalledUseCase = z.infer<typeof installedUseCaseSchema>;
+export type ModelForgeDataSet = z.infer<typeof modelForgeDataSetSchema>;
+export type InstalledUseCaseImportTrace = z.infer<typeof installedUseCaseImportTraceSchema>;
+
+export const INSTALLED_USE_CASE_SOURCE_LABELS: Record<InstalledUseCase["source"], string> = {
+  "dummy-marketplace-install": "Lokaler Demo-Entwurf",
+  "model-forge-dataset-import": "Aus Model Forge importiert",
+};
 
 export const USE_CASE_MATURITY_LABELS: Record<z.infer<typeof useCaseMaturitySchema>, string> = {
   verified: "Verifiziert",
