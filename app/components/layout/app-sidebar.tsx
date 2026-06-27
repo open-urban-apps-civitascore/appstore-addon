@@ -11,6 +11,9 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { getUseCases } from "@/lib/getUseCases";
+import { getMarketplaceText } from "@/lib/marketplace-text";
+import { listInstalledUseCases } from "@/lib/use-case-installations";
 
 interface NavItem {
   title: string;
@@ -27,38 +30,65 @@ interface NavSection {
   items: NavItem[];
 }
 
-const NAV_SECTIONS: NavSection[] = [
-  {
-    title: "Plattform",
-    items: [
-      { title: "Use Case Katalog", href: "/catalog", icon: LayoutGrid, count: 9, active: true },
-      { title: "Installiert", href: "/installed", icon: PackageCheck, count: 6 },
-      {
-        title: "Unsere Daten",
-        href: "/data",
-        icon: Database,
-        hasChildren: true,
-        children: [
-          { title: "Datensätze", href: "/data/datasets" },
-          { title: "Datenquellen", href: "/data/datasources" },
-          { title: "Datenstrukturen", href: "/data/datastructures" },
-        ],
-      },
-    ],
-  },
-  {
-    title: "Admin",
-    items: [
-      { title: "Mandantenverwaltung", href: "/tenant", icon: Users, hasChildren: true },
-    ],
-  },
-  {
-    title: "Hilfe",
-    items: [{ title: "Dokumentation", href: "/docs", icon: FileQuestion }],
-  },
-];
+const getNavSections = (installedCount: number, useCaseCount: number): NavSection[] => {
+  const text = getMarketplaceText().sidebar;
 
-export const AppSidebar = ({ tenantName = "Stadt Musterstadt" }: { tenantName?: string }) => {
+  return [
+    {
+      title: text.sections.platform,
+      items: [
+        {
+          title: text.nav.marketplace,
+          href: "/marketplace",
+          icon: LayoutGrid,
+          active: true,
+          hasChildren: true,
+          children: [
+            { title: text.nav.addons, href: "/marketplace/addons" },
+            { title: text.nav.plugins, href: "/marketplace/plugins" },
+            { title: `${text.nav.useCases} (${useCaseCount})`, href: "/marketplace/use-cases" },
+          ],
+        },
+        { title: text.nav.installed, href: "/installed", icon: PackageCheck, count: installedCount },
+        {
+          title: text.nav.data,
+          href: "/data",
+          icon: Database,
+          hasChildren: true,
+          children: [
+            { title: text.nav.dataSets, href: "/data/datasets" },
+            { title: text.nav.dataSources, href: "/data/datasources" },
+            { title: text.nav.dataStructures, href: "/data/datastructures" },
+          ],
+        },
+      ],
+    },
+    {
+      title: text.sections.admin,
+      items: [
+        {
+          title: text.nav.tenantManagement,
+          href: "/tenant",
+          icon: Users,
+          hasChildren: true,
+        },
+      ],
+    },
+    {
+      title: text.sections.help,
+      items: [{ title: text.nav.docs, href: "/docs", icon: FileQuestion }],
+    },
+  ];
+};
+
+export const AppSidebar = async ({
+  tenantName = "Stadt Musterstadt",
+}: {
+  tenantName?: string;
+}) => {
+  const [installations, useCases] = await Promise.all([listInstalledUseCases(), getUseCases()]);
+  const navSections = getNavSections(installations.length, useCases.length);
+
   return (
     <nav
       aria-label="Hauptnavigation"
@@ -75,7 +105,7 @@ export const AppSidebar = ({ tenantName = "Stadt Musterstadt" }: { tenantName?: 
       </div>
 
       <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-2 py-3">
-        {NAV_SECTIONS.map((section) => (
+        {navSections.map((section) => (
           <div key={section.title} className="flex flex-col gap-1">
             <span className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               {section.title}
