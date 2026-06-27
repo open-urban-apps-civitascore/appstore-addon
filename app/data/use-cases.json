@@ -6,7 +6,7 @@
       "id": "tree-register-starter",
       "title": "Baumkataster Starter",
       "summary": "Ein kleines, wiederverwendbares Starterpaket für einen kommunalen Baumkataster-Datensatz.",
-      "description": "Dieser Demo-Anwendungsfall importiert einen einfachen Datensatz-Entwurf inklusive einer Datenstruktur für Baumeinträge. Er dient als prototypischer Installationsfluss im Marketplace Add-on, ohne bereits gegen die Model-Forge-API oder den Portal-Backend-Import zu sprechen.",
+      "description": "Dieser Demo-Anwendungsfall nutzt einen einfachen Datensatz aus Model Forge inklusive einer Datenstruktur für Baumeinträge. Er dient als prototypischer Installationsfluss im Marketplace Add-on; das Civitas Portal Backend wird dabei noch nicht aufgerufen.",
       "publisher": "Stadt Musterstadt",
       "categories": ["Umwelt", "Grünflächen", "Kataster"],
       "maturity": "prototype",
@@ -22,7 +22,7 @@
           "id": "urn:core:platform:civitas:dataset:common:Baumkataster-Starter:1.0.0",
           "title": "Tree Register Starter",
           "kind": "dataset",
-          "description": "Ein Datensatz-Entwurf für kommunale Baumeinträge."
+        "description": "Ein Model-Forge-Datensatz für kommunale Baumeinträge."
         },
         {
           "id": "urn:core:platform:civitas:datastructure:demo:TreeRecord:1.0.0",
@@ -34,7 +34,7 @@
       "modelForge": {
         "datasetId": "urn:core:platform:civitas:dataset:common:Baumkataster-Starter:1.0.0",
         "resolvedDatasetEndpoint": "/api/v1/datasets?id=urn:core:platform:civitas:dataset:common:Baumkataster-Starter:1.0.0",
-        "note": "Dieser Datensatz wird jetzt direkt aus Model Forge gelesen und als lokaler Draft installiert."
+        "note": "Dieser Datensatz wird direkt aus Model Forge gelesen. Der Marketplace speichert daraus einen lokalen Draft, bevor später ein echter CORE-Draft im Portal Backend angelegt wird."
       },
       "draftTemplate": {
         "dataset": {

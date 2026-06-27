@@ -37,15 +37,112 @@ AUTH_SECRET="your-local-random-development-secret-string"
 AUTH_KEYCLOAK_ID="marketplace-addon"
 AUTH_KEYCLOAK_SECRET="<paste-your-client-secret-here>"
 AUTH_KEYCLOAK_ISSUER="http://localhost:8080/realms/civitas-core"
+MODELFORGE_BASE_URL="http://localhost:8001"
+MODELFORGE_API_KEY="your-secret-key-here"
 ```
 
-### 4. Start the Dev Server
+### 4. Start Model Forge for the Use-Case Install Demo
+The Marketplace "Als Entwurf installieren" flow now reads the referenced DataSet
+directly from Model Forge before storing a local draft in the Marketplace app.
+
+Start Model Forge separately, for example:
+
+```bash
+cd ../../model-forge
+docker compose up -d --build postgres model-forge
+```
+
+If you are already running the CIVITAS/CORE platform locally and `8000` / `5432`
+are occupied, use the port overrides documented in the Model-Forge README, for
+example:
+
+```bash
+MODELFORGE_HTTP_PORT=8001
+MODELFORGE_DB_PORT=5544
+MODELFORGE_PGADMIN_PORT=5051
+```
+
+The Marketplace expects a reachable DataSet for the `Baumkataster Starter`
+demo-use-case. The minimal setup is:
+
+1. Create the DataSet in Model Forge.
+2. Create the `TreeRecord` DataStructure in Model Forge.
+3. Attach the `TreeRecord` URN to the DataSet via `PUT /api/v1/datasets?id=...`.
+
+The exact demo commands are:
+
+```bash
+curl -sS -X POST \
+  'http://localhost:8001/api/v1/datasets' \
+  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: your-secret-key-here' \
+  -d '{"title":"Baumkataster Starter"}'
+
+curl -sS -X POST \
+  'http://localhost:8001/api/v1/datastructures' \
+  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: your-secret-key-here' \
+  -d '{
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "urn:core:platform:civitas:datastructure:demo:TreeRecord:1.0.0",
+      "title": "TreeRecord",
+      "type": "object",
+      "required": ["treeId", "species", "location"],
+      "properties": {
+        "treeId": { "type": "string" },
+        "species": { "type": "string" },
+        "plantedAt": { "type": "string", "format": "date" },
+        "location": {
+          "type": "object",
+          "required": ["lat", "lon"],
+          "properties": {
+            "lat": { "type": "number" },
+            "lon": { "type": "number" }
+          }
+        }
+      }
+    }
+  }'
+
+curl -sS -X PUT \
+  'http://localhost:8001/api/v1/datasets?id=urn%3Acore%3Aplatform%3Acivitas%3Adataset%3Acommon%3ABaumkataster-Starter%3A1.0.0' \
+  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: your-secret-key-here' \
+  -d '{
+    "id": "urn:core:platform:civitas:dataset:common:Baumkataster-Starter:1.0.0",
+    "title": "Baumkataster Starter",
+    "description": "Als Entwurf importierter Datensatz für einen kommunalen Baumkataster-Prototyp.",
+    "version": "1.0",
+    "dataStructureRefs": [
+      "urn:core:platform:civitas:datastructure:demo:TreeRecord:1.0.0"
+    ],
+    "dataSourceRefs": [],
+    "dataSinkRefs": [],
+    "mappingRefs": [],
+    "pipelineRefs": []
+  }'
+```
+
+### 5. Start the Dev Server
 ```bash
 pnpm install
 pnpm dev
 ```
 
 Open [http://localhost:3001](http://localhost:3001). You will be prompted to log in using the Civitas Keycloak instance.
+
+### 6. Verify the Install Flow in the UI
+Use the following path:
+
+1. Log in to the Marketplace.
+2. Open `Anwendungsfälle`.
+3. Open `Baumkataster Starter`.
+4. Click `Als Entwurf installieren`.
+5. On the `Installiert` page:
+   - inspect the generated draft
+   - open `Importprotokoll anzeigen` to see the Model-Forge request, response and local draft payload
+   - use `Entwurf entfernen` to reset the local Marketplace state for another test run
 
 ---
 

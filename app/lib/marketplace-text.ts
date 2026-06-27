@@ -112,7 +112,7 @@ const MARKETPLACE_TEXT_DE: Omit<MarketplaceTexts, "locale"> = {
   useCases: {
     heading: "Anwendungsfälle",
     subtitle:
-      "Wiederverwendbare Use Cases als kontrollierter Entwurfsimport. Der Installationsfluss liest den referenzierten Datensatz jetzt direkt aus Model Forge und legt daraus lokal einen Draft an.",
+      "Wiederverwendbare Use Cases als kontrollierter Entwurfsimport. Der Installationsfluss liest den referenzierten Datensatz direkt aus Model Forge und legt daraus lokal einen Draft an.",
     noResults: "Noch keine Anwendungsfälle im Katalog.",
     installQuestions: "Installationsfragen",
     includedArtifacts: "Enthaltene Artefakte",
@@ -121,7 +121,7 @@ const MARKETPLACE_TEXT_DE: Omit<MarketplaceTexts, "locale"> = {
     emptyInstalled: "Es wurden noch keine Anwendungsfälle installiert.",
     installedHeading: "Installierte Entwürfe",
     installedSubtitle:
-      "Diese Liste zeigt die lokal erzeugten Draft-Installationen des Marketplace-Prototyps aus dem aktuellen Model-Forge-Datensatz.",
+      "Diese Liste zeigt die lokal erzeugten Draft-Installationen des Marketplace-Prototyps aus dem aktuellen Model-Forge-Datensatz inklusive Importprotokoll.",
   },
   detail: {
     createInstallPr: "Create Install PR for my cluster",
