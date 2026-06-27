@@ -1,0 +1,27 @@
+[
+  {
+    "id": "135e2f50-04a4-4ad2-b914-487befd67804",
+    "useCaseId": "tree-register-starter",
+    "useCaseTitle": "Baumkataster Starter",
+    "installedAt": "2026-06-27T14:37:57.312Z",
+    "status": "DRAFT",
+    "source": "dummy-marketplace-install",
+    "createdDataset": {
+      "name": "Baumkataster Starter",
+      "description": "Als Entwurf importierter Datensatz für einen kommunalen Baumkataster-Prototyp.",
+      "openDataAccess": false,
+      "status": "DRAFT"
+    },
+    "createdDataStructures": [
+      {
+        "name": "TreeRecord",
+        "version": "1.0.0"
+      }
+    ],
+    "modelForge": {
+      "datasetId": "urn:core:platform:civitas:dataset:demo:tree-register-starter:1.0.0",
+      "resolvedDatasetEndpoint": "/api/v1/datasets?id=urn:core:platform:civitas:dataset:demo:tree-register-starter:1.0.0",
+      "note": "Dieser Endpoint existiert bereits in Model Forge und ist der spätere Integrationspunkt."
+    }
+  }
+]

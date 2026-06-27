@@ -1,0 +1,88 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-06-27T12:00:00Z",
+  "useCases": [
+    {
+      "id": "tree-register-starter",
+      "title": "Baumkataster Starter",
+      "summary": "Ein kleines, wiederverwendbares Starterpaket für einen kommunalen Baumkataster-Datensatz.",
+      "description": "Dieser Demo-Anwendungsfall importiert einen einfachen Datensatz-Entwurf inklusive einer Datenstruktur für Baumeinträge. Er dient als prototypischer Installationsfluss im Marketplace Add-on, ohne bereits gegen die Model-Forge-API oder den Portal-Backend-Import zu sprechen.",
+      "publisher": "Stadt Musterstadt",
+      "categories": ["Umwelt", "Grünflächen", "Kataster"],
+      "maturity": "prototype",
+      "installability": "direct",
+      "compatibility": ["2.0", "2.1"],
+      "requiredCapabilities": ["PORTAL_BACKEND", "MODELFORGE_COMPONENT"],
+      "installQuestions": [
+        "Soll der Datensatz zunächst nur als Entwurf angelegt werden?",
+        "Welche Fachabteilung soll den Datensatz später übernehmen?"
+      ],
+      "includedArtifacts": [
+        {
+          "id": "urn:core:platform:civitas:dataset:demo:tree-register-starter:1.0.0",
+          "title": "Tree Register Starter",
+          "kind": "dataset",
+          "description": "Ein Datensatz-Entwurf für kommunale Baumeinträge."
+        },
+        {
+          "id": "urn:core:platform:civitas:datastructure:demo:TreeRecord:1.0.0",
+          "title": "TreeRecord",
+          "kind": "datastructure",
+          "description": "Minimale JSON-Schema-Datenstruktur für einen Baumdatensatz."
+        }
+      ],
+      "modelForge": {
+        "datasetId": "urn:core:platform:civitas:dataset:demo:tree-register-starter:1.0.0",
+        "resolvedDatasetEndpoint": "/api/v1/datasets?id=urn:core:platform:civitas:dataset:demo:tree-register-starter:1.0.0",
+        "note": "Dieser Endpoint existiert bereits in Model Forge und ist der spätere Integrationspunkt."
+      },
+      "draftTemplate": {
+        "dataset": {
+          "name": "Baumkataster Starter",
+          "description": "Als Entwurf importierter Datensatz für einen kommunalen Baumkataster-Prototyp.",
+          "openDataAccess": false
+        },
+        "dataStructures": [
+          {
+            "name": "TreeRecord",
+            "version": "1.0.0",
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$id": "urn:core:platform:civitas:datastructure:demo:TreeRecord:1.0.0",
+              "title": "TreeRecord",
+              "type": "object",
+              "required": ["treeId", "species", "location"],
+              "properties": {
+                "treeId": {
+                  "type": "string",
+                  "description": "Lokale Kennung des Baums."
+                },
+                "species": {
+                  "type": "string",
+                  "description": "Baumart."
+                },
+                "plantedAt": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Pflanzdatum, falls bekannt."
+                },
+                "location": {
+                  "type": "object",
+                  "required": ["lat", "lon"],
+                  "properties": {
+                    "lat": {
+                      "type": "number"
+                    },
+                    "lon": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
