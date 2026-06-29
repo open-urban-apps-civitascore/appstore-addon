@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Boxes, Building2, CircleHelp, Link2 } from "lucide-react";
+import { ArrowLeft, Boxes, Building2, Link2 } from "lucide-react";
 
 import { MarketplacePageShell } from "@/components/marketplace/page-shell";
 import { Badge } from "@/components/ui/badge";
@@ -104,21 +104,6 @@ export default async function UseCaseDetailPage({
               </div>
             </div>
 
-            <div className="rounded-md border bg-card p-6">
-              <div className="flex items-center gap-2">
-                <CircleHelp className="size-4 text-muted-foreground" />
-                <h2 className="text-lg font-semibold text-foreground">
-                  {text.useCases.installQuestions}
-                </h2>
-              </div>
-              <ul className="mt-4 flex flex-col gap-3">
-                {useCase.installQuestions.map((question) => (
-                  <li key={question} className="rounded-md border bg-background p-4 text-sm text-foreground">
-                    {question}
-                  </li>
-                ))}
-              </ul>
-            </div>
           </section>
 
           <aside className="flex flex-col gap-6">
