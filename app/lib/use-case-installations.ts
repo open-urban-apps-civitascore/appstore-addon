@@ -3,13 +3,66 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { getUseCaseById } from "@/lib/getUseCases";
+import { parseUrn } from "@/lib/urn";
 import {
   installedUseCaseListSchema,
   type InstalledUseCaseImportTrace,
   installedUseCaseSchema,
   type InstalledUseCase,
   type ModelForgeDataSet,
+  type UseCase,
 } from "@/types/use-cases";
+
+/** A dataset draft as surfaced in the UI and persisted on an installation. */
+export type CreatedDatasetDraft = {
+  name: string;
+  description: string;
+  openDataAccess: boolean;
+  status: "DRAFT";
+};
+
+/** A datastructure draft (name + version) derived from a use case install. */
+export type CreatedDataStructureDraft = {
+  name: string;
+  version: string;
+};
+
+/**
+ * Derive the datastructure drafts an install produced. Prefers the URNs the
+ * Model Forge dataset actually references; falls back to the catalog template
+ * when the dataset has none. Single source of truth for both the persisted
+ * record and the import trace.
+ */
+export function deriveCreatedDataStructures(
+  useCase: UseCase,
+  dataSet?: ModelForgeDataSet,
+): CreatedDataStructureDraft[] {
+  const refs = dataSet?.dataStructureRefs ?? [];
+  if (refs.length > 0) {
+    return refs.map((ref) => {
+      const { name, version } = parseUrn(ref);
+      return { name, version };
+    });
+  }
+
+  return useCase.draftTemplate.dataStructures.map((entry) => ({
+    name: entry.name,
+    version: entry.version,
+  }));
+}
+
+/** Derive the dataset draft an install produced, preferring Model Forge values. */
+export function deriveCreatedDataset(
+  useCase: UseCase,
+  dataSet?: ModelForgeDataSet,
+): CreatedDatasetDraft {
+  return {
+    name: dataSet?.title ?? useCase.draftTemplate.dataset.name,
+    description: dataSet?.description ?? useCase.draftTemplate.dataset.description,
+    openDataAccess: useCase.draftTemplate.dataset.openDataAccess,
+    status: "DRAFT",
+  };
+}
 
 const INSTALLATIONS_FILE = path.join(process.cwd(), "data", "installed-use-cases.json");
 
@@ -47,21 +100,6 @@ export async function removeInstalledUseCaseById(useCaseId: string): Promise<boo
   return true;
 }
 
-function parseUrnNameAndVersion(value: string): { name: string; version: string } {
-  const parts = value.split(":");
-  if (parts.length >= 2) {
-    return {
-      name: parts.at(-2) ?? value,
-      version: parts.at(-1) ?? "1.0.0",
-    };
-  }
-
-  return {
-    name: value,
-    version: "1.0.0",
-  };
-}
-
 export async function installUseCaseById(
   useCaseId: string,
   modelForgeDataSet?: ModelForgeDataSet,
@@ -73,15 +111,6 @@ export async function installUseCaseById(
     throw new Error(`Unknown use case '${useCaseId}'`);
   }
 
-  const dataStructureRefs = modelForgeDataSet?.dataStructureRefs ?? [];
-  const createdDataStructures =
-    dataStructureRefs.length > 0
-      ? dataStructureRefs.map((entry) => parseUrnNameAndVersion(entry))
-      : useCase.draftTemplate.dataStructures.map((entry) => ({
-          name: entry.name,
-          version: entry.version,
-        }));
-
   const created: InstalledUseCase = installedUseCaseSchema.parse({
     id: randomUUID(),
     useCaseId: useCase.id,
@@ -89,13 +118,8 @@ export async function installUseCaseById(
     installedAt: new Date().toISOString(),
     status: "DRAFT",
     source: source ?? (modelForgeDataSet ? "model-forge-dataset-import" : "dummy-marketplace-install"),
-    createdDataset: {
-      name: modelForgeDataSet?.title ?? useCase.draftTemplate.dataset.name,
-      description: modelForgeDataSet?.description ?? useCase.draftTemplate.dataset.description,
-      openDataAccess: useCase.draftTemplate.dataset.openDataAccess,
-      status: "DRAFT",
-    },
-    createdDataStructures,
+    createdDataset: deriveCreatedDataset(useCase, modelForgeDataSet),
+    createdDataStructures: deriveCreatedDataStructures(useCase, modelForgeDataSet),
     modelForge: useCase.modelForge,
     lastImportTrace: importTrace,
   });

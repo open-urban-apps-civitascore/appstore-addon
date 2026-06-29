@@ -7,7 +7,12 @@ import {
   ModelForgeError,
   provisionUseCaseInModelForge,
 } from "@/lib/server/model-forge";
-import { installUseCaseById, removeInstalledUseCaseById } from "@/lib/use-case-installations";
+import {
+  deriveCreatedDataset,
+  deriveCreatedDataStructures,
+  installUseCaseById,
+  removeInstalledUseCaseById,
+} from "@/lib/use-case-installations";
 
 export const runtime = "nodejs";
 
@@ -37,25 +42,8 @@ export async function POST(
       },
       modelForgeResponse: dataSet,
       localDraft: {
-        createdDataset: {
-          name: dataSet.title,
-          description: dataSet.description ?? useCase.draftTemplate.dataset.description,
-          openDataAccess: useCase.draftTemplate.dataset.openDataAccess,
-          status: "DRAFT" as const,
-        },
-        createdDataStructures:
-          dataSet.dataStructureRefs.length > 0
-            ? dataSet.dataStructureRefs.map((entry) => {
-                const parts = entry.split(":");
-                return {
-                  name: parts.at(-2) ?? entry,
-                  version: parts.at(-1) ?? "1.0.0",
-                };
-              })
-            : useCase.draftTemplate.dataStructures.map((entry) => ({
-                name: entry.name,
-                version: entry.version,
-              })),
+        createdDataset: deriveCreatedDataset(useCase, dataSet),
+        createdDataStructures: deriveCreatedDataStructures(useCase, dataSet),
       },
     };
     const installation = await installUseCaseById(

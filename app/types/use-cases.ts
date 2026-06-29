@@ -12,7 +12,6 @@ export const includedArtifactSchema = z.object({
 
 export const modelForgeDatasetRefSchema = z.object({
   datasetId: z.string(),
-  resolvedDatasetEndpoint: z.string(),
   note: z.string().optional(),
 });
 

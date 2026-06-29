@@ -129,9 +129,6 @@ export default async function UseCaseDetailPage({
               </div>
               <p className="mt-3 text-sm text-muted-foreground">{useCase.modelForge.note}</p>
               <p className="mt-3 break-all rounded-md bg-background p-3 font-mono text-xs text-muted-foreground">
-                {useCase.modelForge.resolvedDatasetEndpoint}
-              </p>
-              <p className="mt-2 break-all font-mono text-xs text-muted-foreground">
                 {useCase.modelForge.datasetId}
               </p>
             </section>

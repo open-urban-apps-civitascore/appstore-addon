@@ -67,9 +67,6 @@ export function UseCaseInstallationCard({ installation }: { installation: Instal
           <span>Model-Forge-Quelldatensatz</span>
         </div>
         <p className="mt-2 break-all font-mono text-xs text-muted-foreground">
-          {installation.modelForge.resolvedDatasetEndpoint}
-        </p>
-        <p className="mt-2 break-all font-mono text-xs text-muted-foreground">
           {installation.modelForge.datasetId}
         </p>
       </section>

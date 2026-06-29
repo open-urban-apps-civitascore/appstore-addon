@@ -19,8 +19,10 @@ function getRequiredEnv(name: "MODELFORGE_BASE_URL" | "MODELFORGE_API_KEY"): str
 }
 
 function buildDataSetUrl(useCase: UseCase): string {
-  const baseUrl = getRequiredEnv("MODELFORGE_BASE_URL").replace(/\/+$/, "");
-  return new URL(useCase.modelForge.resolvedDatasetEndpoint, `${baseUrl}/`).toString();
+  const url = new URL(`${modelForgeBaseUrl()}/api/v1/datasets`);
+  // CORE URNs contain colons; setting it as a search param percent-encodes them.
+  url.searchParams.set("id", useCase.modelForge.datasetId);
+  return url.toString();
 }
 
 export function getDataSetUrlForUseCase(useCase: UseCase): string {
