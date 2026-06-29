@@ -1,4 +1,22 @@
+import { z } from "zod";
+
+import { getUseCaseCatalog } from "@/lib/getUseCases";
 import { modelForgeDataSetSchema, type ModelForgeDataSet, type UseCase } from "@/types/use-cases";
+
+/**
+ * Provenance labels the marketplace stamps onto the artifacts it creates in Model
+ * Forge. They make Model Forge the source of truth for "what did the marketplace
+ * install" — searchable via GET /api/v1/artifacts/search?label=key=value — so the
+ * marketplace keeps no local install list of its own.
+ */
+export const MARKETPLACE_LABELS = {
+  origin: "civitas:origin",
+  useCaseId: "civitas:useCaseId",
+  installedAt: "civitas:installedAt",
+  catalogVersion: "civitas:catalogVersion",
+} as const;
+
+export const MARKETPLACE_ORIGIN = "marketplace";
 
 export class ModelForgeError extends Error {
   constructor(
@@ -174,6 +192,12 @@ export async function provisionUseCaseInModelForge(useCase: UseCase): Promise<Pr
       title: shell.title,
       description: useCase.draftTemplate.dataset.description,
       version: shell.version ?? "1.0",
+      labels: {
+        [MARKETPLACE_LABELS.origin]: MARKETPLACE_ORIGIN,
+        [MARKETPLACE_LABELS.useCaseId]: useCase.id,
+        [MARKETPLACE_LABELS.installedAt]: new Date().toISOString(),
+        [MARKETPLACE_LABELS.catalogVersion]: getUseCaseCatalog().version,
+      },
       dataStructureRefs,
       dataSourceRefs: [],
       dataSinkRefs: [],
@@ -183,4 +207,62 @@ export async function provisionUseCaseInModelForge(useCase: UseCase): Promise<Pr
   );
 
   return { dataSet, created: true };
+}
+
+// ── Read/delete side: Model Forge as the source of truth for installed use cases ──
+
+/** Fetch a single DataSet (incl. labels) by its CORE URN. */
+async function fetchDataSetById(id: string): Promise<ModelForgeDataSet | null> {
+  const response = await modelForgeFetch(datasetUrlById(id), { method: "GET" });
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    const payload = await response.text().catch(() => "");
+    throw new ModelForgeError(`Model Forge returned ${response.status}${payload ? `: ${payload}` : ""}`, 502);
+  }
+  return modelForgeDataSetSchema.parse(await response.json());
+}
+
+const searchHitSchema = z.object({ id: z.string() });
+
+/**
+ * Every DataSet the marketplace created, read back from Model Forge by its
+ * provenance label. This — not a local file — is the installed-use-case list.
+ */
+export async function listMarketplaceDataSets(): Promise<ModelForgeDataSet[]> {
+  const label = `${MARKETPLACE_LABELS.origin}=${MARKETPLACE_ORIGIN}`;
+  const response = await modelForgeFetch(
+    `/api/v1/artifacts/search?type=dataset&label=${encodeURIComponent(label)}`,
+    { method: "GET" },
+  );
+  if (!response.ok) {
+    const payload = await response.text().catch(() => "");
+    throw new ModelForgeError(`Model Forge returned ${response.status}${payload ? `: ${payload}` : ""}`, 502);
+  }
+  const hits = z.array(searchHitSchema).parse(await response.json());
+  const dataSets = await Promise.all(hits.map((hit) => fetchDataSetById(hit.id)));
+  return dataSets.filter((ds): ds is ModelForgeDataSet => ds !== null);
+}
+
+/**
+ * Delete a use case's artifacts from Model Forge: the DataSet first, then each
+ * referenced DataStructure (forced, since the now-deleted DataSet referenced them).
+ * Returns false when the DataSet no longer exists.
+ */
+export async function deleteUseCaseArtifacts(datasetId: string): Promise<boolean> {
+  const dataSet = await fetchDataSetById(datasetId);
+  if (!dataSet) return false;
+
+  const del = async (path: string) => {
+    const response = await modelForgeFetch(path, { method: "DELETE" });
+    if (!response.ok && response.status !== 404) {
+      const payload = await response.text().catch(() => "");
+      throw new ModelForgeError(`Model Forge DELETE ${path} → ${response.status}${payload ? `: ${payload}` : ""}`, 502);
+    }
+  };
+
+  await del(datasetUrlById(dataSet.id));
+  for (const ref of dataSet.dataStructureRefs) {
+    await del(`/api/v1/datastructures?id=${encodeURIComponent(ref)}&force=true`);
+  }
+  return true;
 }

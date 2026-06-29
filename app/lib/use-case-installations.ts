@@ -1,12 +1,11 @@
-import { randomUUID } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
-
 import { getUseCaseById } from "@/lib/getUseCases";
+import {
+  deleteUseCaseArtifacts,
+  listMarketplaceDataSets,
+  MARKETPLACE_LABELS,
+} from "@/lib/server/model-forge";
 import { parseUrn } from "@/lib/urn";
 import {
-  installedUseCaseListSchema,
-  type InstalledUseCaseImportTrace,
   installedUseCaseSchema,
   type InstalledUseCase,
   type ModelForgeDataSet,
@@ -30,11 +29,10 @@ export type CreatedDataStructureDraft = {
 /**
  * Derive the datastructure drafts an install produced. Prefers the URNs the
  * Model Forge dataset actually references; falls back to the catalog template
- * when the dataset has none. Single source of truth for both the persisted
- * record and the import trace.
+ * when the dataset has none.
  */
 export function deriveCreatedDataStructures(
-  useCase: UseCase,
+  useCase: UseCase | undefined,
   dataSet?: ModelForgeDataSet,
 ): CreatedDataStructureDraft[] {
   const refs = dataSet?.dataStructureRefs ?? [];
@@ -45,7 +43,7 @@ export function deriveCreatedDataStructures(
     });
   }
 
-  return useCase.draftTemplate.dataStructures.map((entry) => ({
+  return (useCase?.draftTemplate.dataStructures ?? []).map((entry) => ({
     name: entry.name,
     version: entry.version,
   }));
@@ -53,80 +51,79 @@ export function deriveCreatedDataStructures(
 
 /** Derive the dataset draft an install produced, preferring Model Forge values. */
 export function deriveCreatedDataset(
-  useCase: UseCase,
+  useCase: UseCase | undefined,
   dataSet?: ModelForgeDataSet,
 ): CreatedDatasetDraft {
   return {
-    name: dataSet?.title ?? useCase.draftTemplate.dataset.name,
-    description: dataSet?.description ?? useCase.draftTemplate.dataset.description,
-    openDataAccess: useCase.draftTemplate.dataset.openDataAccess,
+    name: dataSet?.title ?? useCase?.draftTemplate.dataset.name ?? "Unbenannt",
+    description:
+      dataSet?.description ?? useCase?.draftTemplate.dataset.description ?? "",
+    openDataAccess: useCase?.draftTemplate.dataset.openDataAccess ?? false,
     status: "DRAFT",
   };
 }
 
-const INSTALLATIONS_FILE = path.join(process.cwd(), "data", "installed-use-cases.json");
-
-async function readInstalledUseCases(): Promise<InstalledUseCase[]> {
-  try {
-    const raw = await readFile(INSTALLATIONS_FILE, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    return installedUseCaseListSchema.parse(parsed);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return [];
-    }
-    throw error;
-  }
-}
-
-async function writeInstalledUseCases(entries: InstalledUseCase[]): Promise<void> {
-  await writeFile(INSTALLATIONS_FILE, `${JSON.stringify(entries, null, 2)}\n`, "utf8");
-}
-
-export async function listInstalledUseCases(): Promise<InstalledUseCase[]> {
-  const entries = await readInstalledUseCases();
-  return [...entries].sort((left, right) => right.installedAt.localeCompare(left.installedAt));
-}
-
-export async function removeInstalledUseCaseById(useCaseId: string): Promise<boolean> {
-  const entries = await readInstalledUseCases();
-  const nextEntries = entries.filter((entry) => entry.useCaseId !== useCaseId);
-
-  if (nextEntries.length === entries.length) {
-    return false;
-  }
-
-  await writeInstalledUseCases(nextEntries);
-  return true;
-}
-
-export async function installUseCaseById(
-  useCaseId: string,
-  modelForgeDataSet?: ModelForgeDataSet,
-  importTrace?: InstalledUseCaseImportTrace,
-  source?: InstalledUseCase["source"],
-): Promise<InstalledUseCase> {
+/**
+ * Project a Model Forge DataSet (carrying the marketplace provenance labels) onto
+ * the InstalledUseCase view model the UI renders. Model Forge is the source of
+ * truth: the use case is resolved from the `civitas:useCaseId` label, falling back
+ * to the catalog for human-readable metadata.
+ */
+function toInstalledUseCase(
+  dataSet: ModelForgeDataSet,
+  source: InstalledUseCase["source"] = "model-forge-created",
+): InstalledUseCase {
+  const labels = dataSet.labels ?? {};
+  const useCaseId = labels[MARKETPLACE_LABELS.useCaseId] ?? dataSet.id;
   const useCase = getUseCaseById(useCaseId);
-  if (!useCase) {
-    throw new Error(`Unknown use case '${useCaseId}'`);
-  }
+  const installedAt = labels[MARKETPLACE_LABELS.installedAt] ?? new Date().toISOString();
 
-  const created: InstalledUseCase = installedUseCaseSchema.parse({
-    id: randomUUID(),
-    useCaseId: useCase.id,
-    useCaseTitle: useCase.title,
-    installedAt: new Date().toISOString(),
+  return installedUseCaseSchema.parse({
+    id: dataSet.id,
+    useCaseId,
+    useCaseTitle: useCase?.title ?? dataSet.title,
+    installedAt,
     status: "DRAFT",
-    source: source ?? (modelForgeDataSet ? "model-forge-dataset-import" : "dummy-marketplace-install"),
-    createdDataset: deriveCreatedDataset(useCase, modelForgeDataSet),
-    createdDataStructures: deriveCreatedDataStructures(useCase, modelForgeDataSet),
-    modelForge: useCase.modelForge,
-    lastImportTrace: importTrace,
+    source,
+    createdDataset: deriveCreatedDataset(useCase, dataSet),
+    createdDataStructures: deriveCreatedDataStructures(useCase, dataSet),
+    modelForge: useCase?.modelForge ?? { datasetId: dataSet.id },
   });
+}
 
-  const entries = (await readInstalledUseCases()).filter((entry) => entry.useCaseId !== useCaseId);
-  entries.push(created);
-  await writeInstalledUseCases(entries);
+/**
+ * The installed use cases, read back from Model Forge by their provenance label —
+ * there is no local store. Newest first.
+ */
+export async function listInstalledUseCases(): Promise<InstalledUseCase[]> {
+  const dataSets = await listMarketplaceDataSets();
+  return dataSets
+    .map((dataSet) => toInstalledUseCase(dataSet))
+    .sort((left, right) => right.installedAt.localeCompare(left.installedAt));
+}
 
-  return created;
+/**
+ * Build the InstalledUseCase view for a freshly provisioned dataset. Pure — the
+ * artifacts (and their labels) were already written to Model Forge by the install.
+ */
+export function installUseCaseById(
+  _useCaseId: string,
+  dataSet: ModelForgeDataSet,
+  source: InstalledUseCase["source"],
+): InstalledUseCase {
+  return toInstalledUseCase(dataSet, source);
+}
+
+/**
+ * Uninstall = delete the use case's artifacts from Model Forge. The dataset is
+ * located by its `civitas:useCaseId` label (robust against the server-owned URN
+ * differing from the catalog id). Returns false when nothing is installed.
+ */
+export async function removeInstalledUseCaseById(useCaseId: string): Promise<boolean> {
+  const dataSets = await listMarketplaceDataSets();
+  const match = dataSets.find(
+    (dataSet) => (dataSet.labels?.[MARKETPLACE_LABELS.useCaseId] ?? null) === useCaseId,
+  );
+  if (!match) return false;
+  return deleteUseCaseArtifacts(match.id);
 }

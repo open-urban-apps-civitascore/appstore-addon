@@ -2,17 +2,8 @@ import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
 import { getUseCaseById } from "@/lib/getUseCases";
-import {
-  getDataSetUrlForUseCase,
-  ModelForgeError,
-  provisionUseCaseInModelForge,
-} from "@/lib/server/model-forge";
-import {
-  deriveCreatedDataset,
-  deriveCreatedDataStructures,
-  installUseCaseById,
-  removeInstalledUseCaseById,
-} from "@/lib/use-case-installations";
+import { ModelForgeError, provisionUseCaseInModelForge } from "@/lib/server/model-forge";
+import { installUseCaseById, removeInstalledUseCaseById } from "@/lib/use-case-installations";
 
 export const runtime = "nodejs";
 
@@ -33,32 +24,17 @@ export async function POST(
 
   try {
     const { dataSet, created } = await provisionUseCaseInModelForge(useCase);
-    const importTrace = {
-      importedAt: new Date().toISOString(),
-      modelForgeRequest: {
-        method: created ? ("POST" as const) : ("GET" as const),
-        url: getDataSetUrlForUseCase(useCase),
-        datasetId: dataSet.id,
-      },
-      modelForgeResponse: dataSet,
-      localDraft: {
-        createdDataset: deriveCreatedDataset(useCase, dataSet),
-        createdDataStructures: deriveCreatedDataStructures(useCase, dataSet),
-      },
-    };
-    const installation = await installUseCaseById(
+    const installation = installUseCaseById(
       id,
       dataSet,
-      importTrace,
       created ? "model-forge-created" : "model-forge-dataset-import",
     );
 
     return NextResponse.json({
       message: created
-        ? "Use case provisioned in Model Forge and stored as a local draft"
-        : "Existing Model Forge dataset imported as a local draft",
+        ? "Use case provisioned in Model Forge"
+        : "Existing Model Forge dataset linked",
       installation,
-      trace: importTrace,
     });
   } catch (error) {
     if (error instanceof ModelForgeError) {

@@ -32,6 +32,7 @@ export const modelForgeDataSetSchema = z.object({
   title: z.string(),
   description: z.string().nullish(),
   version: z.string().nullish(),
+  labels: z.record(z.string(), z.string()).nullish(),
   dataStructureRefs: z.array(z.string()).default([]),
   dataSourceRefs: z.array(z.string()).default([]),
   dataSinkRefs: z.array(z.string()).default([]),
