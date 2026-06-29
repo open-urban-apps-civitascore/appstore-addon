@@ -64,9 +64,9 @@ export default async function UseCaseDetailPage({
             <div className="flex shrink-0 flex-col gap-3 rounded-lg border bg-background p-4 lg:w-[280px]">
               <h2 className="text-sm font-semibold text-foreground">Prototype Install</h2>
               <p className="text-sm text-muted-foreground">
-                Der Button liest den referenzierten Datensatz aus Model Forge und legt daraus
-                lokal einen Draft an. Das Civitas Portal Backend wird dabei noch nicht
-                aufgerufen.
+                Der Button legt die Artefakte des Use-Cases (DataStructure + DataSet) direkt in
+                Model Forge an, falls sie noch nicht existieren, und speichert daraus lokal einen
+                Draft. Das Civitas Portal Backend wird dabei noch nicht aufgerufen.
               </p>
               <InstallUseCaseButton useCaseId={useCase.id} />
             </div>

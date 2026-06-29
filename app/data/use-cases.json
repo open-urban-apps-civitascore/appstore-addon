@@ -34,7 +34,7 @@
       "modelForge": {
         "datasetId": "urn:core:platform:civitas:dataset:common:Baumkataster-Starter:1.0.0",
         "resolvedDatasetEndpoint": "/api/v1/datasets?id=urn:core:platform:civitas:dataset:common:Baumkataster-Starter:1.0.0",
-        "note": "Dieser Datensatz wird direkt aus Model Forge gelesen. Der Marketplace speichert daraus einen lokalen Draft, bevor später ein echter CORE-Draft im Portal Backend angelegt wird."
+        "note": "Beim Installieren legt der Marketplace die Artefakte (DataStructure + DataSet) in Model Forge an, falls sie noch nicht existieren, und speichert daraus einen lokalen Draft. Später wird daraus ein echter CORE-Draft im Portal Backend."
       },
       "draftTemplate": {
         "dataset": {

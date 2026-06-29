@@ -69,7 +69,7 @@ export const useCaseCatalogSchema = z.object({
 export const installedUseCaseImportTraceSchema = z.object({
   importedAt: z.string().datetime(),
   modelForgeRequest: z.object({
-    method: z.literal("GET"),
+    method: z.enum(["GET", "POST", "PUT"]),
     url: z.string(),
     datasetId: z.string(),
   }),
@@ -93,7 +93,7 @@ export const installedUseCaseSchema = z.object({
   useCaseTitle: z.string(),
   installedAt: z.string().datetime(),
   status: z.literal("DRAFT"),
-  source: z.enum(["dummy-marketplace-install", "model-forge-dataset-import"]),
+  source: z.enum(["dummy-marketplace-install", "model-forge-dataset-import", "model-forge-created"]),
   createdDataset: draftDatasetTemplateSchema.extend({
     status: z.literal("DRAFT"),
   }),
@@ -118,6 +118,7 @@ export type InstalledUseCaseImportTrace = z.infer<typeof installedUseCaseImportT
 export const INSTALLED_USE_CASE_SOURCE_LABELS: Record<InstalledUseCase["source"], string> = {
   "dummy-marketplace-install": "Lokaler Demo-Entwurf",
   "model-forge-dataset-import": "Aus Model Forge importiert",
+  "model-forge-created": "In Model Forge angelegt",
 };
 
 export const USE_CASE_MATURITY_LABELS: Record<z.infer<typeof useCaseMaturitySchema>, string> = {
