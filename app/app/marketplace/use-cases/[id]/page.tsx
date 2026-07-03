@@ -122,7 +122,9 @@ export default async function UseCaseDetailPage({
                 <Link2 className="size-4 text-muted-foreground" />
                 <h2 className="text-sm font-semibold text-foreground">{text.useCases.datasetReference}</h2>
               </div>
-              <p className="mt-3 text-sm text-muted-foreground">{useCase.modelForge.note}</p>
+              {useCase.modelForge.note ? (
+                <p className="mt-3 text-sm text-muted-foreground">{useCase.modelForge.note}</p>
+              ) : null}
             </section>
           </aside>
         </div>

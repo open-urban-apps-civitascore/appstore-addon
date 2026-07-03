@@ -35,6 +35,7 @@ export interface MarketplaceTexts {
     heading: string;
     subtitle: string;
     noResults: string;
+    installHint: string;
     installQuestions: string;
     includedArtifacts: string;
     datasetReference: string;
@@ -134,6 +135,8 @@ const MARKETPLACE_TEXT_DE: Omit<MarketplaceTexts, "locale"> = {
     subtitle:
       "Wiederverwendbare Use Cases. Die Installation stellt den Anwendungsfall über das CivitasCore Portal-Backend bereit: Der DataSet-Lebenszyklus löst die Provisionierung (FROST-Projekt, APISIX-Route, NiFi-Pipeline) aus.",
     noResults: "Noch keine Anwendungsfälle im Katalog.",
+    installHint:
+      "Beim Installieren legt der Marketplace die Artefakte des Use-Cases (DataStructure + DataSet) direkt in Model Forge an, falls sie noch nicht existieren, und speichert daraus lokal einen Draft. Das Civitas Portal Backend wird dabei noch nicht aufgerufen – später wird daraus ein echter CORE-Draft.",
     installQuestions: "Installationsfragen",
     includedArtifacts: "Enthaltene Artefakte",
     datasetReference: "Referenzierter CORE-Datensatz",
