@@ -1,40 +1,39 @@
-import { z } from "zod";
-
-import addonsSeed from "@/data/catalog.json";
-import useCasesSeed from "@/data/use-cases.json";
-import { catalogSchema, type Addon } from "@/types/catalog";
-import { useCaseCatalogSchema, type UseCase } from "@/types/use-cases";
+import { type Addon } from "@/types/catalog";
+import { repoListIndexSchema, type RepoListIndex } from "@/types/repo-list";
+import { type UseCase } from "@/types/use-cases";
 
 /**
  * The repo-list: a single git-hosted `index.json` (F-Droid model) that every
  * marketplace instance reads to build its catalog. This module is the only place
  * that fetches it. It runs its own TTL cache and keeps serving the last valid
- * state when the source is unreachable (last-known-good), so the marketplace
- * stays usable in restrictive municipal networks. With no source configured it
- * falls back to the catalog bundled with the app, so local dev works offline.
+ * state when the source is unreachable (in-memory last-known-good), so the
+ * marketplace stays usable in restrictive municipal networks.
+ *
+ * The repo-list is the single source of truth: there is no catalog bundled with
+ * the app. When nothing has ever been fetched — no REPO_LIST_URL, or the remote
+ * is unreachable on a cold start — the catalog is served empty (never crashing,
+ * but honestly empty) rather than falling back to stale build-time data.
  *
  * See gitlab.com/civitascore-openurbanapps/civitas-marketplace-catalog.
  */
 
-// One unified index, two sections, one shared version/updatedAt — reusing the
-// per-entry schemas so the index and the app can never drift apart.
-const repoListIndexSchema = z.object({
-  version: z.string(),
-  updatedAt: z.string().datetime(),
-  addons: catalogSchema.shape.addons,
-  useCases: useCaseCatalogSchema.shape.useCases,
-});
-type RepoListIndex = z.infer<typeof repoListIndexSchema>;
-
-type IndexOrigin = "remote" | "seed";
+type IndexOrigin = "remote" | "unconfigured" | "unreachable";
 
 type CacheEntry = {
   index: RepoListIndex;
-  /** When the served data was last fetched from the remote (seed: build time). */
+  /** When the served data was last fetched from the remote. */
   fetchedAt: Date;
   origin: IndexOrigin;
-  /** true = the remote was unreachable and this is a fallback (last-known-good). */
+  /** true = not live: last-known-good, unconfigured, or unreachable. */
   stale: boolean;
+};
+
+// The ultimate fallback: an empty catalog. Never cached, so the next call retries.
+const EMPTY_INDEX: RepoListIndex = {
+  version: "0.0.0",
+  updatedAt: new Date(0).toISOString(),
+  addons: [],
+  useCases: [],
 };
 
 const DEFAULT_TTL_SECONDS = 900;
@@ -53,18 +52,8 @@ function indexUrl(): string | undefined {
   return raw ? raw : undefined;
 }
 
-// The catalog shipped inside the app — used only when nothing is cached and the
-// remote is unavailable (or unconfigured). The two seed files predate the merge
-// into one index, so we stitch them here; their versions may differ, we take the
-// use-cases one (it changes most).
-function bundledSeed(stale: boolean): CacheEntry {
-  const index = repoListIndexSchema.parse({
-    version: (useCasesSeed as { version: string }).version,
-    updatedAt: (useCasesSeed as { updatedAt: string }).updatedAt,
-    addons: (addonsSeed as { addons: unknown }).addons,
-    useCases: (useCasesSeed as { useCases: unknown }).useCases,
-  });
-  return { index, fetchedAt: new Date(), origin: "seed", stale };
+function emptyEntry(origin: "unconfigured" | "unreachable"): CacheEntry {
+  return { index: EMPTY_INDEX, fetchedAt: new Date(0), origin, stale: true };
 }
 
 async function loadIndex(): Promise<CacheEntry> {
@@ -76,8 +65,8 @@ async function loadIndex(): Promise<CacheEntry> {
 
   const url = indexUrl();
   if (!url) {
-    // No remote configured (local dev): serve the bundled catalog as-is.
-    return (cache ??= bundledSeed(false));
+    // No repo-list configured — serve an empty catalog (honest, non-crashing).
+    return emptyEntry("unconfigured");
   }
 
   try {
@@ -97,8 +86,8 @@ async function loadIndex(): Promise<CacheEntry> {
     console.error(`[repo-list] fetch/validate failed for ${url}:`, error);
     // Last-known-good: keep serving the previous valid state, flagged stale.
     if (cache) return (cache = { ...cache, stale: true });
-    // Cold start with no reachable remote: fall back to the bundled seed.
-    return (cache = bundledSeed(true));
+    // Cold start with an unreachable remote and nothing cached: empty catalog.
+    return emptyEntry("unreachable");
   }
 }
 

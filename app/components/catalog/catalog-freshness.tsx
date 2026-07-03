@@ -13,14 +13,25 @@ const formatWhen = (value: Date): string =>
 export async function CatalogFreshness() {
   const meta = await getRepoListMeta();
 
-  if (meta.origin === "seed") {
+  if (meta.origin === "unconfigured") {
     return (
-      <p className="text-xs text-muted-foreground">
-        Gebündelter Katalog (keine Repo-List konfiguriert) · v{meta.version}
+      <p className="inline-flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-500">
+        <AlertTriangle className="size-3.5" />
+        Repo-List nicht konfiguriert (REPO_LIST_URL)
       </p>
     );
   }
 
+  if (meta.origin === "unreachable") {
+    return (
+      <p className="inline-flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-500">
+        <AlertTriangle className="size-3.5" />
+        Repo-List nicht erreichbar
+      </p>
+    );
+  }
+
+  // origin === "remote"
   if (meta.stale) {
     return (
       <p className="inline-flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-500">

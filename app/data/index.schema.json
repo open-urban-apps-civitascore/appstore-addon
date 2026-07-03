@@ -1,0 +1,366 @@
+{
+  "$id": "https://gitlab.com/civitascore-openurbanapps/civitas-marketplace-catalog/index.schema.json",
+  "title": "CIVITAS Marketplace Catalog Index",
+  "description": "Schema for the repo-list index.json (addons + use cases). Generated from the Zod schemas in the marketplace add-on — do not edit by hand.",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    },
+    "addons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 3,
+            "description": "Unique identifier for the add-on (e.g., airflow-addon)"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human-readable name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Short description of what the add-on does"
+          },
+          "author": {
+            "type": "string",
+            "description": "Publisher or maintainer of the add-on (currently the source repository namespace)"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Free-form classification tags shown in the UI (e.g., 'Workflow', 'Storage')"
+          },
+          "repository": {
+            "description": "URL of the add-on's source repository",
+            "type": "string",
+            "format": "uri"
+          },
+          "iconUrl": {
+            "description": "Optional URL to a logo or icon",
+            "type": "string",
+            "format": "uri"
+          },
+          "licenses": {
+            "description": "Licenses shown in the UI: the add-on integration's own license and the wrapped tool's license",
+            "type": "object",
+            "properties": {
+              "addon": {
+                "description": "License of the add-on integration itself (e.g., 'European Union Public License 1.2')",
+                "type": "string"
+              },
+              "tool": {
+                "description": "License of the wrapped upstream tool (e.g., 'Apache License 2.0')",
+                "type": "string"
+              }
+            }
+          },
+          "compatibility": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "coreVersion": {
+                  "type": "string",
+                  "description": "Supported CivitasCore version (e.g., '1.2')"
+                },
+                "branch": {
+                  "description": "Git branch that supports this Core version (e.g., 'main', 'devel-v1.3')",
+                  "type": "string"
+                },
+                "lastUpdated": {
+                  "description": "Timestamp this branch was last updated",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "coreVersion"
+              ]
+            },
+            "description": "One entry per supported CivitasCore version, tracked per Git branch"
+          },
+          "requiredCapabilities": {
+            "description": "List of required platform capabilities or connectors (e.g., 'KEYCLOAK', 'APISIX_INGRESS')",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "deploymentRef": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "helm",
+                  "git",
+                  "bundle"
+                ],
+                "description": "The deployment mechanism used to install this add-on"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to the Helm chart repository or Git repository"
+              },
+              "chartName": {
+                "description": "Name of the chart if type is 'helm'",
+                "type": "string"
+              },
+              "path": {
+                "description": "Path within the repository if type is 'git'",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "url"
+            ]
+          },
+          "revoked": {
+            "description": "Tombstone: entry withdrawn — hidden from the catalog and blocked for new installs",
+            "type": "boolean"
+          },
+          "revokedReason": {
+            "description": "Human-readable reason shown when an entry is revoked",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "author",
+          "categories",
+          "compatibility",
+          "deploymentRef"
+        ]
+      }
+    },
+    "useCases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 3
+          },
+          "title": {
+            "type": "string",
+            "minLength": 3
+          },
+          "summary": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "publisher": {
+            "type": "string"
+          },
+          "categories": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "maturity": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "operational",
+              "prototype"
+            ]
+          },
+          "installability": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "adaptation",
+              "experimental"
+            ]
+          },
+          "compatibility": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requiredCapabilities": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "installQuestions": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "includedArtifacts": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "dataset",
+                    "datastructure",
+                    "datasource",
+                    "pipeline"
+                  ]
+                },
+                "description": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "kind"
+              ]
+            }
+          },
+          "modelForge": {
+            "type": "object",
+            "properties": {
+              "datasetId": {
+                "type": "string"
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "datasetId"
+            ]
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "repoUrl": {
+                "type": "string",
+                "format": "uri"
+              },
+              "gitIdentifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "repoUrl",
+              "gitIdentifier"
+            ]
+          },
+          "revoked": {
+            "type": "boolean"
+          },
+          "revokedReason": {
+            "type": "string"
+          },
+          "draftTemplate": {
+            "type": "object",
+            "properties": {
+              "dataset": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "openDataAccess": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "description"
+                ]
+              },
+              "dataStructures": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "schema": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "version",
+                    "schema"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "dataset"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "summary",
+          "description",
+          "publisher",
+          "maturity",
+          "installability",
+          "compatibility",
+          "modelForge",
+          "draftTemplate"
+        ]
+      }
+    }
+  },
+  "required": [
+    "version",
+    "updatedAt",
+    "addons",
+    "useCases"
+  ]
+}
