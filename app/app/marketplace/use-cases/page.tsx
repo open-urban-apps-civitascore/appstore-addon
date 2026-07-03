@@ -1,11 +1,12 @@
 import { getUseCases } from "@/lib/getUseCases";
 import { getMarketplaceText } from "@/lib/marketplace-text";
+import { CatalogFreshness } from "@/components/catalog/catalog-freshness";
 import { MarketplacePageShell } from "@/components/marketplace/page-shell";
 import { UseCaseCard } from "@/components/use-cases/use-case-card";
 
-export default function MarketplaceUseCasesPage() {
+export default async function MarketplaceUseCasesPage() {
   const text = getMarketplaceText();
-  const useCases = getUseCases();
+  const useCases = await getUseCases();
 
   return (
     <MarketplacePageShell
@@ -16,6 +17,9 @@ export default function MarketplaceUseCasesPage() {
         <div className="max-w-3xl">
           <h1 className="text-3xl font-bold text-foreground">{text.useCases.heading}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{text.useCases.subtitle}</p>
+          <div className="mt-2">
+            <CatalogFreshness />
+          </div>
         </div>
 
         {useCases.length > 0 ? (

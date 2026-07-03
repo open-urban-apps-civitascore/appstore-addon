@@ -86,7 +86,16 @@ export const AppSidebar = async ({
 }: {
   tenantName?: string;
 }) => {
-  const [installations, useCases] = await Promise.all([listInstalledUseCases(), getUseCases()]);
+  // The installed count needs Model Forge; the catalog (repo-list) does not.
+  // Degrade the count instead of 500-ing every page when Model Forge is down —
+  // browsing the catalog must not depend on Model Forge being reachable.
+  const [installations, useCases] = await Promise.all([
+    listInstalledUseCases().catch((error) => {
+      console.error("[sidebar] could not load installed use cases (Model Forge unreachable?):", error);
+      return [];
+    }),
+    getUseCases(),
+  ]);
   const navSections = getNavSections(installations.length, useCases.length);
 
   return (

@@ -54,6 +54,17 @@ export const useCaseSchema = z.object({
   installQuestions: z.array(z.string()).default([]),
   includedArtifacts: z.array(includedArtifactSchema).default([]),
   modelForge: modelForgeDatasetRefSchema,
+  // Artifact repo the use case lives in (branch/tag/commit hash). Not consumed
+  // yet; prepares milestone 3, where installs fetch CORE-IR files from this repo
+  // (commit pinning = integrity) instead of the inline draftTemplate below.
+  source: z
+    .object({
+      repoUrl: z.string().url(),
+      gitIdentifier: z.string(),
+    })
+    .optional(),
+  revoked: z.boolean().optional(),
+  revokedReason: z.string().optional(),
   draftTemplate: z.object({
     dataset: draftDatasetTemplateSchema,
     dataStructures: z.array(draftDataStructureTemplateSchema).default([]),

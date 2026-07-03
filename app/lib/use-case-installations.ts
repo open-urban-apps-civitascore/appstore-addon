@@ -69,13 +69,13 @@ export function deriveCreatedDataset(
  * truth: the use case is resolved from the `civitas:useCaseId` label, falling back
  * to the catalog for human-readable metadata.
  */
-function toInstalledUseCase(
+async function toInstalledUseCase(
   dataSet: ModelForgeDataSet,
   source: InstalledUseCase["source"] = "model-forge-created",
-): InstalledUseCase {
+): Promise<InstalledUseCase> {
   const labels = dataSet.labels ?? {};
   const useCaseId = labels[MARKETPLACE_LABELS.useCaseId] ?? dataSet.id;
-  const useCase = getUseCaseById(useCaseId);
+  const useCase = await getUseCaseById(useCaseId);
   const installedAt = labels[MARKETPLACE_LABELS.installedAt] ?? new Date().toISOString();
 
   return installedUseCaseSchema.parse({
@@ -97,20 +97,19 @@ function toInstalledUseCase(
  */
 export async function listInstalledUseCases(): Promise<InstalledUseCase[]> {
   const dataSets = await listMarketplaceDataSets();
-  return dataSets
-    .map((dataSet) => toInstalledUseCase(dataSet))
-    .sort((left, right) => right.installedAt.localeCompare(left.installedAt));
+  const installed = await Promise.all(dataSets.map((dataSet) => toInstalledUseCase(dataSet)));
+  return installed.sort((left, right) => right.installedAt.localeCompare(left.installedAt));
 }
 
 /**
  * Build the InstalledUseCase view for a freshly provisioned dataset. Pure — the
  * artifacts (and their labels) were already written to Model Forge by the install.
  */
-export function installUseCaseById(
+export async function installUseCaseById(
   _useCaseId: string,
   dataSet: ModelForgeDataSet,
   source: InstalledUseCase["source"],
-): InstalledUseCase {
+): Promise<InstalledUseCase> {
   return toInstalledUseCase(dataSet, source);
 }
 

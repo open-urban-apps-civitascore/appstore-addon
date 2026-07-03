@@ -19,7 +19,7 @@ export default async function UseCaseDetailPage({
 }) {
   const { id } = await params;
   const text = getMarketplaceText();
-  const useCase = getUseCaseById(id);
+  const useCase = await getUseCaseById(id);
 
   if (!useCase) {
     notFound();

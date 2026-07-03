@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import type { Addon } from "@/types/catalog";
 
@@ -20,6 +20,8 @@ interface AddonCatalogProps {
   subtitle?: string;
   countLabel?: string;
   noResultsLabel?: string;
+  /** Optional freshness line (repo-list "catalog as of …") rendered under the heading. */
+  freshness?: ReactNode;
 }
 
 export const AddonCatalog = ({
@@ -29,6 +31,7 @@ export const AddonCatalog = ({
   subtitle = "Zentrale Komponenten, Adapter und Tools für deinen CivitasCore Cluster finden und installieren.",
   countLabel = "von",
   noResultsLabel = "Keine Add-ons für die aktuelle Suche gefunden.",
+  freshness,
 }: AddonCatalogProps) => {
   const [filters, setFilters] = useState<CatalogFilterState>(INITIAL_FILTERS);
 
@@ -75,6 +78,7 @@ export const AddonCatalog = ({
       <div className="max-w-2xl">
         <h1 className="text-3xl font-bold text-foreground">{heading}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+        {freshness ? <div className="mt-2">{freshness}</div> : null}
       </div>
 
       <CatalogFilters

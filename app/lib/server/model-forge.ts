@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getUseCaseCatalog } from "@/lib/getUseCases";
+import { getRepoListVersion } from "@/lib/server/repo-list";
 import { modelForgeDataSetSchema, type ModelForgeDataSet, type UseCase } from "@/types/use-cases";
 
 /**
@@ -196,7 +196,7 @@ export async function provisionUseCaseInModelForge(useCase: UseCase): Promise<Pr
         [MARKETPLACE_LABELS.origin]: MARKETPLACE_ORIGIN,
         [MARKETPLACE_LABELS.useCaseId]: useCase.id,
         [MARKETPLACE_LABELS.installedAt]: new Date().toISOString(),
-        [MARKETPLACE_LABELS.catalogVersion]: getUseCaseCatalog().version,
+        [MARKETPLACE_LABELS.catalogVersion]: await getRepoListVersion(),
       },
       dataStructureRefs,
       dataSourceRefs: [],

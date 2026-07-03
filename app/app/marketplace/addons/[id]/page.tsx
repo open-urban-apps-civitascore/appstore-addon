@@ -67,7 +67,7 @@ export default async function AddonDetailPage({
 }) {
   const text = getMarketplaceText();
   const { id } = await params;
-  const addon = getCatalog().addons.find((entry) => entry.id === id);
+  const addon = (await getCatalog()).addons.find((entry) => entry.id === id);
 
   if (!addon) {
     notFound();

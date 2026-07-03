@@ -1,11 +1,12 @@
 import { getCatalog } from "@/lib/getCatalog";
 import { getMarketplaceText } from "@/lib/marketplace-text";
 import { AddonCatalog } from "@/components/catalog/addon-catalog";
+import { CatalogFreshness } from "@/components/catalog/catalog-freshness";
 import { MarketplacePageShell } from "@/components/marketplace/page-shell";
 
-export default function MarketplaceAddonsPage() {
+export default async function MarketplaceAddonsPage() {
   const text = getMarketplaceText();
-  const catalog = getCatalog();
+  const catalog = await getCatalog();
 
   return (
     <MarketplacePageShell
@@ -19,6 +20,7 @@ export default function MarketplaceAddonsPage() {
         subtitle={text.catalog.subtitle}
         countLabel={text.catalog.countLabel}
         noResultsLabel={text.catalog.noResults}
+        freshness={<CatalogFreshness />}
       />
     </MarketplacePageShell>
   );

@@ -1,14 +1,11 @@
-import useCaseCatalogData from "@/data/use-cases.json";
-import { useCaseCatalogSchema, type UseCase, type UseCaseCatalog } from "@/types/use-cases";
+import { getRepoListUseCases } from "@/lib/server/repo-list";
+import type { UseCase } from "@/types/use-cases";
 
-export function getUseCaseCatalog(): UseCaseCatalog {
-  return useCaseCatalogSchema.parse(useCaseCatalogData);
+/** Use cases from the repo-list (remote index, cached; bundled seed offline). */
+export async function getUseCases(): Promise<UseCase[]> {
+  return getRepoListUseCases();
 }
 
-export function getUseCases(): UseCase[] {
-  return getUseCaseCatalog().useCases;
-}
-
-export function getUseCaseById(id: string): UseCase | undefined {
-  return getUseCases().find((entry) => entry.id === id);
+export async function getUseCaseById(id: string): Promise<UseCase | undefined> {
+  return (await getUseCases()).find((entry) => entry.id === id);
 }

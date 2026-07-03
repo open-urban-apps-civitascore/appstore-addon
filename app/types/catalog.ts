@@ -57,7 +57,15 @@ export const addonSchema = z.object({
     .array(z.string())
     .optional()
     .describe("List of required platform capabilities or connectors (e.g., 'KEYCLOAK', 'APISIX_INGRESS')"),
-  deploymentRef: deploymentRefSchema
+  deploymentRef: deploymentRefSchema,
+  revoked: z
+    .boolean()
+    .optional()
+    .describe('Tombstone: entry withdrawn — hidden from the catalog and blocked for new installs'),
+  revokedReason: z
+    .string()
+    .optional()
+    .describe('Human-readable reason shown when an entry is revoked')
 });
 
 export const catalogSchema = z.object({

@@ -17,14 +17,14 @@ export async function POST(
   }
 
   const { id } = await params;
-  const useCase = getUseCaseById(id);
+  const useCase = await getUseCaseById(id);
   if (!useCase) {
     return NextResponse.json({ error: "Use case not found" }, { status: 404 });
   }
 
   try {
     const { dataSet, created } = await provisionUseCaseInModelForge(useCase);
-    const installation = installUseCaseById(
+    const installation = await installUseCaseById(
       id,
       dataSet,
       created ? "model-forge-created" : "model-forge-dataset-import",
