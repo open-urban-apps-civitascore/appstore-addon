@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { fetchUseCaseBundle } from "@/lib/server/bundle";
 import { getRepoListVersion } from "@/lib/server/repo-list";
 import { modelForgeDataSetSchema, type ModelForgeDataSet, type UseCase } from "@/types/use-cases";
 
@@ -14,6 +15,10 @@ export const MARKETPLACE_LABELS = {
   useCaseId: "civitas:useCaseId",
   installedAt: "civitas:installedAt",
   catalogVersion: "civitas:catalogVersion",
+  // Provenance of a git-bundle install (M3): which artifact repo + ref it came
+  // from. The basis for later drift detection (M4).
+  bundleRepo: "civitas:bundleRepo",
+  bundleRef: "civitas:bundleRef",
 } as const;
 
 export const MARKETPLACE_ORIGIN = "marketplace";
@@ -164,39 +169,79 @@ export interface ProvisionResult {
   created: boolean;
 }
 
+/** Normalized provisioning input, from either a git bundle or the inline template. */
+interface ProvisionInput {
+  datasetTitle: string;
+  datasetDescription: string;
+  /** Element JSON Schemas to create, in dependency order. */
+  elements: Record<string, unknown>[];
+  /** Extra provenance labels (e.g. the bundle's repo + ref). */
+  extraLabels?: Record<string, string>;
+}
+
+/** Provisioning input from the inline catalog template (use cases without a `source`). */
+function inlineProvisionInput(useCase: UseCase): ProvisionInput {
+  return {
+    datasetTitle: useCase.draftTemplate.dataset.name,
+    datasetDescription: useCase.draftTemplate.dataset.description,
+    elements: useCase.draftTemplate.dataStructures.map((structure) => structure.schema),
+  };
+}
+
+/** Provisioning input from the use case's git artifact repo (M3). */
+async function bundleProvisionInput(source: NonNullable<UseCase["source"]>): Promise<ProvisionInput> {
+  const bundle = await fetchUseCaseBundle(source);
+  return {
+    datasetTitle: bundle.dataset.title,
+    datasetDescription: bundle.dataset.description ?? "",
+    elements: bundle.elements.map((element) => element.schema),
+    extraLabels: {
+      [MARKETPLACE_LABELS.bundleRepo]: source.repoUrl,
+      [MARKETPLACE_LABELS.bundleRef]: source.gitIdentifier,
+    },
+  };
+}
+
 /**
- * Ensure the use case's artifacts exist in Model Forge, creating them from the
- * bundle's `draftTemplate` when missing — no pre-seeding required. Idempotent:
- * an already-present dataset (matched by the use case's datasetId) is reused.
+ * Ensure the use case's artifacts exist in Model Forge, creating them when
+ * missing — no pre-seeding required. The content comes from the use case's git
+ * artifact repo when it declares a `source` (M3), otherwise from the inline
+ * catalog `draftTemplate`. Idempotent: an already-present dataset (matched by the
+ * use case's datasetId) is reused.
  *
  * Note: this assumes the dataset URN Model Forge generates from the dataset
- * title equals `useCase.modelForge.datasetId` (true for the bundled use cases).
+ * title equals `useCase.modelForge.datasetId` (true for the catalog use cases).
  */
 export async function provisionUseCaseInModelForge(useCase: UseCase): Promise<ProvisionResult> {
   if (await existsById("/api/v1/datasets", useCase.modelForge.datasetId)) {
     return { dataSet: await getDataSetForUseCase(useCase), created: false };
   }
 
+  const input = useCase.source
+    ? await bundleProvisionInput(useCase.source)
+    : inlineProvisionInput(useCase);
+
   const dataStructureRefs: string[] = [];
-  for (const structure of useCase.draftTemplate.dataStructures) {
-    dataStructureRefs.push(await ensureDataStructure(structure.schema));
+  for (const schema of input.elements) {
+    dataStructureRefs.push(await ensureDataStructure(schema));
   }
 
   const shell = modelForgeDataSetSchema.parse(
-    await sendJson("POST", "/api/v1/datasets", { title: useCase.draftTemplate.dataset.name }),
+    await sendJson("POST", "/api/v1/datasets", { title: input.datasetTitle }),
   );
 
   const dataSet = modelForgeDataSetSchema.parse(
     await sendJson("PUT", datasetUrlById(shell.id), {
       id: shell.id,
       title: shell.title,
-      description: useCase.draftTemplate.dataset.description,
+      description: input.datasetDescription,
       version: shell.version ?? "1.0",
       labels: {
         [MARKETPLACE_LABELS.origin]: MARKETPLACE_ORIGIN,
         [MARKETPLACE_LABELS.useCaseId]: useCase.id,
         [MARKETPLACE_LABELS.installedAt]: new Date().toISOString(),
         [MARKETPLACE_LABELS.catalogVersion]: await getRepoListVersion(),
+        ...input.extraLabels,
       },
       dataStructureRefs,
       dataSourceRefs: [],

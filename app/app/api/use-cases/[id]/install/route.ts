@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
 import { getUseCaseById } from "@/lib/getUseCases";
+import { BundleError } from "@/lib/server/bundle";
 import { ModelForgeError, provisionUseCaseInModelForge } from "@/lib/server/model-forge";
 import { installUseCaseById, removeInstalledUseCaseById } from "@/lib/use-case-installations";
 
@@ -37,7 +38,7 @@ export async function POST(
       installation,
     });
   } catch (error) {
-    if (error instanceof ModelForgeError) {
+    if (error instanceof ModelForgeError || error instanceof BundleError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
 
