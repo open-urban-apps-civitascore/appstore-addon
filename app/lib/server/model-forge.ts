@@ -169,36 +169,18 @@ export interface ProvisionResult {
   created: boolean;
 }
 
-/** Normalized provisioning input, from either a git bundle or the inline template. */
+/** Normalized provisioning input from the use case's git bundle. */
 interface ProvisionInput {
   datasetTitle: string;
   datasetDescription: string;
   /** Element JSON Schemas to create, in dependency order. */
   elements: Record<string, unknown>[];
-  /** Extra provenance labels (e.g. the bundle's repo + ref). */
+  /** Extra provenance labels (the bundle's repo + ref). */
   extraLabels?: Record<string, string>;
 }
 
-/** Provisioning input from the inline catalog template (use cases without a `source`). */
-function inlineProvisionInput(useCase: UseCase): ProvisionInput {
-  const draftTemplate = useCase.draftTemplate;
-  if (!draftTemplate) {
-    // Enforces the "at least one of source / draftTemplate" invariant at the point
-    // of use — this branch is only reached when the use case has no `source`.
-    throw new ModelForgeError(
-      `Use case '${useCase.id}' has neither a source repo nor a draftTemplate to install from.`,
-      500,
-    );
-  }
-  return {
-    datasetTitle: draftTemplate.dataset.name,
-    datasetDescription: draftTemplate.dataset.description,
-    elements: draftTemplate.dataStructures.map((structure) => structure.schema),
-  };
-}
-
 /** Provisioning input from the use case's git artifact repo (M3). */
-async function bundleProvisionInput(source: NonNullable<UseCase["source"]>): Promise<ProvisionInput> {
+async function bundleProvisionInput(source: UseCase["source"]): Promise<ProvisionInput> {
   const bundle = await fetchUseCaseBundle(source);
   return {
     datasetTitle: bundle.dataset.title,
@@ -213,10 +195,9 @@ async function bundleProvisionInput(source: NonNullable<UseCase["source"]>): Pro
 
 /**
  * Ensure the use case's artifacts exist in Model Forge, creating them when
- * missing — no pre-seeding required. The content comes from the use case's git
- * artifact repo when it declares a `source` (M3), otherwise from the inline
- * catalog `draftTemplate`. Idempotent: an already-present dataset (matched by the
- * use case's datasetId) is reused.
+ * missing — no pre-seeding required. The content is fetched from the use case's
+ * git artifact repo (`source`). Idempotent: an already-present dataset (matched by
+ * the use case's datasetId) is reused.
  *
  * Note: this assumes the dataset URN Model Forge generates from the dataset
  * title equals `useCase.modelForge.datasetId` (true for the catalog use cases).
@@ -226,9 +207,7 @@ export async function provisionUseCaseInModelForge(useCase: UseCase): Promise<Pr
     return { dataSet: await getDataSetForUseCase(useCase), created: false };
   }
 
-  const input = useCase.source
-    ? await bundleProvisionInput(useCase.source)
-    : inlineProvisionInput(useCase);
+  const input = await bundleProvisionInput(useCase.source);
 
   const dataStructureRefs: string[] = [];
   for (const schema of input.elements) {
