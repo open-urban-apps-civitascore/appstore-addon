@@ -43,7 +43,7 @@ export function deriveCreatedDataStructures(
     });
   }
 
-  return (useCase?.draftTemplate.dataStructures ?? []).map((entry) => ({
+  return (useCase?.draftTemplate?.dataStructures ?? []).map((entry) => ({
     name: entry.name,
     version: entry.version,
   }));
@@ -55,10 +55,10 @@ export function deriveCreatedDataset(
   dataSet?: ModelForgeDataSet,
 ): CreatedDatasetDraft {
   return {
-    name: dataSet?.title ?? useCase?.draftTemplate.dataset.name ?? "Unbenannt",
+    name: dataSet?.title ?? useCase?.draftTemplate?.dataset.name ?? "Unbenannt",
     description:
-      dataSet?.description ?? useCase?.draftTemplate.dataset.description ?? "",
-    openDataAccess: useCase?.draftTemplate.dataset.openDataAccess ?? false,
+      dataSet?.description ?? useCase?.draftTemplate?.dataset.description ?? "",
+    openDataAccess: useCase?.draftTemplate?.dataset.openDataAccess ?? false,
     status: "DRAFT",
   };
 }

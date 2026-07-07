@@ -181,10 +181,19 @@ interface ProvisionInput {
 
 /** Provisioning input from the inline catalog template (use cases without a `source`). */
 function inlineProvisionInput(useCase: UseCase): ProvisionInput {
+  const draftTemplate = useCase.draftTemplate;
+  if (!draftTemplate) {
+    // Enforces the "at least one of source / draftTemplate" invariant at the point
+    // of use — this branch is only reached when the use case has no `source`.
+    throw new ModelForgeError(
+      `Use case '${useCase.id}' has neither a source repo nor a draftTemplate to install from.`,
+      500,
+    );
+  }
   return {
-    datasetTitle: useCase.draftTemplate.dataset.name,
-    datasetDescription: useCase.draftTemplate.dataset.description,
-    elements: useCase.draftTemplate.dataStructures.map((structure) => structure.schema),
+    datasetTitle: draftTemplate.dataset.name,
+    datasetDescription: draftTemplate.dataset.description,
+    elements: draftTemplate.dataStructures.map((structure) => structure.schema),
   };
 }
 
