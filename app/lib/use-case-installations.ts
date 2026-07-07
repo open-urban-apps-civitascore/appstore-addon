@@ -27,26 +27,16 @@ export type CreatedDataStructureDraft = {
 };
 
 /**
- * Derive the datastructure drafts an install produced. Prefers the URNs the
- * Model Forge dataset actually references; falls back to the catalog template
- * when the dataset has none.
+ * Derive the datastructure drafts an install produced, from the URNs the Model
+ * Forge dataset references.
  */
 export function deriveCreatedDataStructures(
-  useCase: UseCase | undefined,
   dataSet?: ModelForgeDataSet,
 ): CreatedDataStructureDraft[] {
-  const refs = dataSet?.dataStructureRefs ?? [];
-  if (refs.length > 0) {
-    return refs.map((ref) => {
-      const { name, version } = parseUrn(ref);
-      return { name, version };
-    });
-  }
-
-  return (useCase?.draftTemplate?.dataStructures ?? []).map((entry) => ({
-    name: entry.name,
-    version: entry.version,
-  }));
+  return (dataSet?.dataStructureRefs ?? []).map((ref) => {
+    const { name, version } = parseUrn(ref);
+    return { name, version };
+  });
 }
 
 /** Derive the dataset draft an install produced, preferring Model Forge values. */
@@ -55,10 +45,9 @@ export function deriveCreatedDataset(
   dataSet?: ModelForgeDataSet,
 ): CreatedDatasetDraft {
   return {
-    name: dataSet?.title ?? useCase?.draftTemplate?.dataset.name ?? "Unbenannt",
-    description:
-      dataSet?.description ?? useCase?.draftTemplate?.dataset.description ?? "",
-    openDataAccess: useCase?.draftTemplate?.dataset.openDataAccess ?? false,
+    name: dataSet?.title ?? useCase?.title ?? "Unbenannt",
+    description: dataSet?.description ?? useCase?.description ?? "",
+    openDataAccess: false,
     status: "DRAFT",
   };
 }
@@ -86,7 +75,7 @@ async function toInstalledUseCase(
     status: "DRAFT",
     source,
     createdDataset: deriveCreatedDataset(useCase, dataSet),
-    createdDataStructures: deriveCreatedDataStructures(useCase, dataSet),
+    createdDataStructures: deriveCreatedDataStructures(dataSet),
     modelForge: useCase?.modelForge ?? { datasetId: dataSet.id },
   });
 }

@@ -286,60 +286,6 @@
           },
           "revokedReason": {
             "type": "string"
-          },
-          "draftTemplate": {
-            "type": "object",
-            "properties": {
-              "dataset": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "openDataAccess": {
-                    "default": false,
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "name",
-                  "description"
-                ]
-              },
-              "dataStructures": {
-                "default": [],
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "name": {
-                      "type": "string"
-                    },
-                    "version": {
-                      "type": "string"
-                    },
-                    "schema": {
-                      "type": "object",
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "additionalProperties": {}
-                    }
-                  },
-                  "required": [
-                    "name",
-                    "version",
-                    "schema"
-                  ]
-                }
-              }
-            },
-            "required": [
-              "dataset"
-            ]
           }
         },
         "required": [
@@ -351,7 +297,8 @@
           "maturity",
           "installability",
           "compatibility",
-          "modelForge"
+          "modelForge",
+          "source"
         ]
       }
     }
