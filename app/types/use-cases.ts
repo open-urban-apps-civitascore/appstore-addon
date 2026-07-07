@@ -65,10 +65,16 @@ export const useCaseSchema = z.object({
     .optional(),
   revoked: z.boolean().optional(),
   revokedReason: z.string().optional(),
-  draftTemplate: z.object({
-    dataset: draftDatasetTemplateSchema,
-    dataStructures: z.array(draftDataStructureTemplateSchema).default([]),
-  }),
+  // Inline artifacts for use cases without a `source`. Optional: a source-based
+  // use case (M3) installs from its git bundle and omits this. Invariant "at least
+  // one of source / draftTemplate" is enforced at provisioning time (model-forge.ts),
+  // not in the schema, so it survives JSON-Schema generation.
+  draftTemplate: z
+    .object({
+      dataset: draftDatasetTemplateSchema,
+      dataStructures: z.array(draftDataStructureTemplateSchema).default([]),
+    })
+    .optional(),
 });
 
 export const useCaseCatalogSchema = z.object({
