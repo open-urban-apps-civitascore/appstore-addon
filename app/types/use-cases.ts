@@ -49,11 +49,19 @@ export const useCaseSchema = z.object({
   includedArtifacts: z.array(includedArtifactSchema).default([]),
   modelForge: modelForgeDatasetRefSchema,
   // The git artifact repo the use case installs from: its CORE-IR bundle is
-  // fetched at `gitIdentifier` (tag/commit — pinning = integrity). Required: the
-  // catalog only *references* content, it never inlines it (all-reference model).
+  // fetched at `gitIdentifier`. Required (all-reference model — the catalog only
+  // *references* content, never inlines it). The ref must be an immutable pin — a
+  // version tag (v1.2.3) or a commit hash, never a branch — so installs are
+  // reproducible (a branch is mutable). Heuristic; real "is it a tag" enforcement
+  // needs a CI resolve-check + protected tags on the artifact repo.
   source: z.object({
     repoUrl: z.string().url(),
-    gitIdentifier: z.string(),
+    gitIdentifier: z
+      .string()
+      .regex(
+        /^(v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?|[0-9a-f]{7,64})$/,
+        "gitIdentifier must be an immutable ref — a version tag (v1.2.3) or a commit hash, not a branch",
+      ),
   }),
   revoked: z.boolean().optional(),
   revokedReason: z.string().optional(),

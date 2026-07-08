@@ -273,7 +273,8 @@
                 "format": "uri"
               },
               "gitIdentifier": {
-                "type": "string"
+                "type": "string",
+                "pattern": "^(v?\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?|[0-9a-f]{7,64})$"
               }
             },
             "required": [
