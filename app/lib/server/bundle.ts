@@ -45,12 +45,38 @@ export interface UseCaseBundle {
   /** Element JSON Schemas, in `dataStructureRefs` (dependency) order. */
   elements: { ref: string; schema: Record<string, unknown> }[];
   source: NonNullable<UseCase["source"]>;
+  /** The commit SHA `source.gitIdentifier` resolved to (immutable pin); absent if resolution failed. */
+  commit?: string;
 }
 
 // GitLab-style raw file URL for a path at a pinned ref, mirroring how the
 // repo-list itself is fetched (…/-/raw/<ref>/<path>).
 function rawUrl(repoUrl: string, ref: string, path: string): string {
   return `${repoUrl.replace(/\/+$/, "")}/-/raw/${encodeURIComponent(ref)}/${path}`;
+}
+
+/**
+ * Resolve a git ref (tag/commit) to its full commit SHA via the GitLab commits API
+ * (public, no token). Returns null on failure — the install still proceeds from the
+ * ref, just without the immutable commit pin. GitLab-specific, like `rawUrl`.
+ */
+async function resolveCommitSha(repoUrl: string, ref: string): Promise<string | null> {
+  try {
+    const url = new URL(repoUrl);
+    const project = encodeURIComponent(url.pathname.replace(/^\/+|\/+$/g, ""));
+    const api = `${url.origin}/api/v4/projects/${project}/repository/commits/${encodeURIComponent(ref)}`;
+    const response = await fetch(api, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { id?: unknown };
+    return typeof body.id === "string" ? body.id : null;
+  } catch (error) {
+    console.warn(`[bundle] could not resolve commit for ${repoUrl}@${ref}:`, error);
+    return null;
+  }
 }
 
 async function fetchJson(url: string): Promise<unknown> {
@@ -81,27 +107,33 @@ export async function fetchUseCaseBundle(
 ): Promise<UseCaseBundle> {
   const { repoUrl, gitIdentifier } = source;
 
+  // Resolve the pinned ref to an immutable commit SHA, then fetch the bundle *at
+  // that commit* — so the installed content provably matches the recorded SHA (no
+  // race with a moving tag). Falls back to the ref itself if resolution fails.
+  const commit = await resolveCommitSha(repoUrl, gitIdentifier);
+  const ref = commit ?? gitIdentifier;
+
   const dataset = datasetManifestSchema.parse(
-    await fetchJson(rawUrl(repoUrl, gitIdentifier, "core-ir/dataset.json")),
+    await fetchJson(rawUrl(repoUrl, ref, "core-ir/dataset.json")),
   );
 
   const elements: UseCaseBundle["elements"] = [];
-  for (const ref of dataset.dataStructureRefs) {
-    const name = parseUrn(ref).name;
+  for (const structureRef of dataset.dataStructureRefs) {
+    const name = parseUrn(structureRef).name;
     const schema = (await fetchJson(
-      rawUrl(repoUrl, gitIdentifier, `core-ir/${name}.schema.json`),
+      rawUrl(repoUrl, ref, `core-ir/${name}.schema.json`),
     )) as Record<string, unknown>;
 
     // The file resolved by name must actually be the element the dataset refers
     // to — guards the filename convention against silent mismatches.
-    if (typeof schema.$id === "string" && schema.$id !== ref) {
+    if (typeof schema.$id === "string" && schema.$id !== structureRef) {
       throw new BundleError(
-        `Bundle element $id '${schema.$id}' does not match referenced URN '${ref}'.`,
+        `Bundle element $id '${schema.$id}' does not match referenced URN '${structureRef}'.`,
         502,
       );
     }
-    elements.push({ ref, schema });
+    elements.push({ ref: structureRef, schema });
   }
 
-  return { dataset, elements, source };
+  return { dataset, elements, source, commit: commit ?? undefined };
 }

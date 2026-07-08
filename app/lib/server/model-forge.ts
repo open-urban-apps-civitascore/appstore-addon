@@ -16,9 +16,11 @@ export const MARKETPLACE_LABELS = {
   installedAt: "civitas:installedAt",
   catalogVersion: "civitas:catalogVersion",
   // Provenance of a git-bundle install (M3): which artifact repo + ref it came
-  // from. The basis for later drift detection (M4).
+  // from, plus the immutable commit SHA the ref resolved to at install time. The
+  // basis for later drift detection (M4).
   bundleRepo: "civitas:bundleRepo",
   bundleRef: "civitas:bundleRef",
+  bundleCommit: "civitas:bundleCommit",
 } as const;
 
 export const MARKETPLACE_ORIGIN = "marketplace";
@@ -182,14 +184,18 @@ interface ProvisionInput {
 /** Provisioning input from the use case's git artifact repo (M3). */
 async function bundleProvisionInput(source: UseCase["source"]): Promise<ProvisionInput> {
   const bundle = await fetchUseCaseBundle(source);
+  const extraLabels: Record<string, string> = {
+    [MARKETPLACE_LABELS.bundleRepo]: source.repoUrl,
+    [MARKETPLACE_LABELS.bundleRef]: source.gitIdentifier,
+  };
+  if (bundle.commit) {
+    extraLabels[MARKETPLACE_LABELS.bundleCommit] = bundle.commit;
+  }
   return {
     datasetTitle: bundle.dataset.title,
     datasetDescription: bundle.dataset.description ?? "",
     elements: bundle.elements.map((element) => element.schema),
-    extraLabels: {
-      [MARKETPLACE_LABELS.bundleRepo]: source.repoUrl,
-      [MARKETPLACE_LABELS.bundleRef]: source.gitIdentifier,
-    },
+    extraLabels,
   };
 }
 
