@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { catalogSchema } from "./catalog";
+import { addonCatalogSchema } from "./addons";
 import { useCaseCatalogSchema } from "./use-cases";
 
 /**
@@ -17,7 +17,7 @@ export const repoListIndexSchema = z.object({
   $schema: z.string().optional(),
   version: z.string(),
   updatedAt: z.string().datetime(),
-  addons: catalogSchema.shape.addons,
+  addons: addonCatalogSchema.shape.addons,
   useCases: useCaseCatalogSchema.shape.useCases,
 });
 

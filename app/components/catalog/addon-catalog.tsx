@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 
-import type { Addon } from "@/types/catalog";
+import type { Addon } from "@/types/addons";
 
 import { CatalogFilters, type CatalogFilterState } from "./catalog-filters";
 import { AddonCard } from "./addon-card";

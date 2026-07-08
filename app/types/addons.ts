@@ -68,8 +68,8 @@ export const addonSchema = z.object({
     .describe('Human-readable reason shown when an entry is revoked')
 });
 
-export const catalogSchema = z.object({
-  version: z.string().describe('Version of the catalog schema or data'),
+export const addonCatalogSchema = z.object({
+  version: z.string().describe('Version of the addon catalog'),
   updatedAt: z.string().datetime(),
   addons: z.array(addonSchema)
 });
@@ -79,4 +79,4 @@ export type DeploymentRef = z.infer<typeof deploymentRefSchema>;
 export type Compatibility = z.infer<typeof compatibilitySchema>;
 export type Licenses = z.infer<typeof licensesSchema>;
 export type Addon = z.infer<typeof addonSchema>;
-export type Catalog = z.infer<typeof catalogSchema>;
+export type AddonCatalog = z.infer<typeof addonCatalogSchema>;

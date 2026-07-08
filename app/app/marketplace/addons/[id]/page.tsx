@@ -7,7 +7,7 @@ import { getMarketplaceText } from "@/lib/marketplace-text";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MarketplacePageShell } from "@/components/marketplace/page-shell";
-import type { Addon } from "@/types/catalog";
+import type { Addon } from "@/types/addons";
 
 function formatTimestamp(value?: string): string | null {
   if (!value) return null;

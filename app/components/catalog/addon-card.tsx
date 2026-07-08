@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Building2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { Addon } from "@/types/catalog";
+import type { Addon } from "@/types/addons";
 
 interface AddonCardProps {
   addon: Addon;

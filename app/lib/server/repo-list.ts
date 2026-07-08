@@ -1,4 +1,4 @@
-import { type Addon } from "@/types/catalog";
+import { type Addon } from "@/types/addons";
 import { repoListIndexSchema, type RepoListIndex } from "@/types/repo-list";
 import { type UseCase } from "@/types/use-cases";
 
