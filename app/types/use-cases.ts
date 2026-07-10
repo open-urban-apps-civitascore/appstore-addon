@@ -34,6 +34,18 @@ export const modelForgeDataSetSchema = z.object({
   pipelineRefs: z.array(z.string()).default([]),
 });
 
+// A concrete building block a use case needs (mirrors the marketplace taxonomy:
+// Add-on / Plugin / Connector). Backward compatible: a legacy bare-string entry
+// is coerced to a generic connector block so existing catalog data still parses
+// (the remote index is validated with `.parse()`, which throws on any mismatch).
+export const requiredBuildingBlockSchema = z.union([
+  z.object({
+    kind: z.enum(["addon", "plugin", "connector"]),
+    name: z.string(),
+  }),
+  z.string().transform((name) => ({ kind: "connector" as const, name })),
+]);
+
 export const useCaseSchema = z.object({
   id: z.string().min(3),
   title: z.string().min(3),
@@ -44,7 +56,7 @@ export const useCaseSchema = z.object({
   maturity: useCaseMaturitySchema,
   installability: useCaseInstallabilitySchema,
   compatibility: z.array(z.string()).min(1),
-  requiredCapabilities: z.array(z.string()).default([]),
+  requiredCapabilities: z.array(requiredBuildingBlockSchema).default([]),
   installQuestions: z.array(z.string()).default([]),
   includedArtifacts: z.array(includedArtifactSchema).default([]),
   modelForge: modelForgeDatasetRefSchema,
@@ -117,6 +129,7 @@ export const installedUseCaseSchema = z.object({
 export const installedUseCaseListSchema = z.array(installedUseCaseSchema);
 
 export type UseCase = z.infer<typeof useCaseSchema>;
+export type RequiredBuildingBlock = z.infer<typeof requiredBuildingBlockSchema>;
 export type UseCaseCatalog = z.infer<typeof useCaseCatalogSchema>;
 export type InstalledUseCase = z.infer<typeof installedUseCaseSchema>;
 export type ModelForgeDataSet = z.infer<typeof modelForgeDataSetSchema>;
@@ -141,4 +154,17 @@ export const USE_CASE_INSTALLABILITY_LABELS: Record<
   direct: "Direkt installierbar",
   adaptation: "Anpassung nötig",
   experimental: "Experimentell",
+};
+
+// Clean, fixed labels for the artifact type badges in the technical spec list.
+// These are platform vocabulary (they mirror the URN <type> segment), so they
+// stay in their canonical English form rather than being localized.
+export const INCLUDED_ARTIFACT_KIND_LABELS: Record<
+  z.infer<typeof includedArtifactSchema>["kind"],
+  string
+> = {
+  dataset: "Dataset",
+  datastructure: "Datastructure",
+  datasource: "Data Source",
+  pipeline: "Pipeline",
 };

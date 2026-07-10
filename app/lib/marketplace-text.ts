@@ -42,6 +42,16 @@ export interface MarketplaceTexts {
     emptyInstalled: string;
     installedHeading: string;
     installedSubtitle: string;
+    detailsHeading: string;
+    installabilityLabel: string;
+    compatibilityLabel: string;
+    artifactsLabel: string;
+    sourceLabel: string;
+    installHeading: string;
+    installDescription: string;
+    requiredHeading: string;
+    aboutHeading: string;
+    publisherLabel: string;
   };
   detail: {
     createInstallPr: string;
@@ -61,6 +71,16 @@ export interface MarketplaceTexts {
     requiredCapabilities: string;
     noCapabilities: string;
     repository: string;
+    details: string;
+    publisher: string;
+    addonKindLabel: string;
+    integration: {
+      heading: string;
+      ssoTitle: string;
+      ssoBody: string;
+      restTitle: string;
+      restBody: string;
+    };
   };
   placeholders: {
     addonsCount: string;
@@ -122,6 +142,17 @@ const MARKETPLACE_TEXT_DE: Omit<MarketplaceTexts, "locale"> = {
     installedHeading: "Installierte Entwürfe",
     installedSubtitle:
       "Diese Liste zeigt die lokal erzeugten Draft-Installationen des Marketplace-Prototyps aus dem aktuellen Model-Forge-Datensatz inklusive Importprotokoll.",
+    detailsHeading: "Details",
+    installabilityLabel: "Installierbarkeit",
+    compatibilityLabel: "Kompatibilität",
+    artifactsLabel: "Artefakte",
+    sourceLabel: "Quelle",
+    installHeading: "Installieren",
+    installDescription:
+      "Legt die enthaltenen Artefakte in Model Forge an und erstellt daraus lokal einen Entwurf. Das Portal-Backend wird dabei noch nicht aufgerufen.",
+    requiredHeading: "Benötigt",
+    aboutHeading: "Worum es geht",
+    publisherLabel: "Herausgeber",
   },
   detail: {
     createInstallPr: "Create Install PR for my cluster",
@@ -142,6 +173,16 @@ const MARKETPLACE_TEXT_DE: Omit<MarketplaceTexts, "locale"> = {
     requiredCapabilities: "Benötigte Capabilities",
     noCapabilities: "Keine besonderen Anforderungen.",
     repository: "Repository",
+    details: "Details",
+    publisher: "Herausgeber",
+    addonKindLabel: "Add-on · Web-App",
+    integration: {
+      heading: "Integration in CIVITAS/CORE",
+      ssoTitle: "Single-Sign-On",
+      ssoBody: "Anmeldung über Keycloak – dieselben Nutzer:innen und Rollen wie im Core.",
+      restTitle: "REST & Webhooks",
+      restBody: "API-Aufrufe und Webhook-Registrierungen für den Datenaustausch.",
+    },
   },
   placeholders: {
     addonsCount: "Noch keine Add-ons verfügbar.",
