@@ -1,23 +1,16 @@
+import { type ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Building2, ExternalLink, FileText, GitBranch, GitPullRequest } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, ExternalLink, GitPullRequest, Lock } from "lucide-react";
+import { type LucideIcon } from "lucide-react";
 
-import { getCatalog } from "@/lib/getCatalog";
-import { getMarketplaceText } from "@/lib/marketplace-text";
+import { AddonIcon } from "@/components/catalog/addon-icon";
+import { MarketplacePageShell } from "@/components/marketplace/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MarketplacePageShell } from "@/components/marketplace/page-shell";
+import { getCatalog } from "@/lib/getCatalog";
+import { getMarketplaceText } from "@/lib/marketplace-text";
 import type { Addon } from "@/types/catalog";
-
-function formatTimestamp(value?: string): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("de-DE", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
 
 // Turn the deployment reference into a copy-ready install snippet, mirroring
 // how the upstream add-ons are activated (git clone + inventory entry, or helm).
@@ -47,15 +40,33 @@ function buildInstallSnippet(addon: Addon): string {
   return `# Bundle\n${ref.url}`;
 }
 
-function Fact({ label, value }: { label: string; value: string }) {
+// Generic explainer of how every add-on attaches to the platform (SSO + REST) —
+// true for all add-ons, so it needs no per-entry data.
+function IntegrationFeature({
+  icon: Icon,
+  title,
+  body,
+}: {
+  icon: LucideIcon;
+  title: string;
+  body: string;
+}) {
   return (
-    <div className="flex flex-col gap-1 rounded-md border bg-card p-3">
-      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </span>
-      <span className="truncate text-sm font-medium text-foreground" title={value}>
-        {value}
-      </span>
+    <div className="rounded-lg bg-primary/5 p-4">
+      <div className="flex items-center gap-2 text-primary">
+        <Icon className="size-5" />
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      </div>
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
+    </div>
+  );
+}
+
+function DetailRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-border/60 py-2.5 text-sm last:border-b-0">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="text-right font-medium text-foreground">{children}</dd>
     </div>
   );
 }
@@ -73,7 +84,6 @@ export default async function AddonDetailPage({
     notFound();
   }
 
-  const monogram = addon.name.trim().charAt(0).toUpperCase();
   const coreVersions = addon.compatibility.map((entry) => entry.coreVersion);
 
   return (
@@ -91,75 +101,68 @@ export default async function AddonDetailPage({
         </Link>
 
         {/* Hero */}
-        <section className="rounded-xl border bg-card p-6">
+        <section className="rounded-xl border border-t-2 border-t-primary bg-card p-6">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex gap-4">
-              <div className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-2xl font-bold text-primary">
-                {monogram}
-              </div>
+              <AddonIcon name={addon.name} className="size-14 rounded-xl text-lg" />
               <div className="flex flex-col gap-2">
+                <span className="font-mono text-xs font-semibold uppercase tracking-wider text-primary">
+                  {text.detail.addonKindLabel}
+                </span>
                 <h1 className="text-2xl font-bold leading-tight text-foreground">{addon.name}</h1>
                 <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
                   {addon.description}
                 </p>
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <Building2 className="size-4" />
-                  <span>{addon.author}</span>
-                </div>
-                {addon.categories.length > 0 && (
+                {addon.categories.length > 0 ? (
                   <div className="mt-1 flex flex-wrap gap-1.5">
                     {addon.categories.map((category) => (
-                      <Badge key={category} variant="secondary" className="font-normal">
+                      <span
+                        key={category}
+                        className="inline-flex items-center rounded-md bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-700 dark:text-blue-400"
+                      >
                         {category}
-                      </Badge>
+                      </span>
                     ))}
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
 
-            <div className="flex shrink-0 flex-col gap-3 sm:items-end">
-              <div className="flex flex-wrap gap-2 sm:justify-end">
-                <Button>
-                  <GitPullRequest className="size-4" />
-                  {text.detail.createInstallPr}
+            <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+              <Button>
+                <GitPullRequest className="size-4" />
+                {text.detail.createInstallPr}
+              </Button>
+              {addon.repository ? (
+                <Button variant="outline" asChild>
+                  <a href={addon.repository} target="_blank" rel="noreferrer">
+                    {text.detail.openRepository}
+                    <ExternalLink className="size-4" />
+                  </a>
                 </Button>
-                {addon.repository && (
-                  <Button variant="outline" asChild>
-                    <a href={addon.repository} target="_blank" rel="noreferrer">
-                      {text.detail.openRepository}
-                      <ExternalLink className="size-4" />
-                    </a>
-                  </Button>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-1.5 sm:justify-end">
-                {coreVersions.map((version) => (
-                  <Badge key={version} variant="outline" className="font-normal">
-                    Core {version}
-                  </Badge>
-                ))}
-              </div>
+              ) : null}
             </div>
           </div>
         </section>
-
-        {/* Quick facts */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Fact label={text.detail.addonLicense} value={addon.licenses?.addon ?? text.common.notAvailable} />
-          <Fact label={text.detail.toolLicense} value={addon.licenses?.tool ?? text.common.notAvailable} />
-          <Fact label={text.detail.deploymentLabel} value={addon.deploymentRef.type} />
-          <Fact label={text.detail.coreVersionsLabel} value={coreVersions.join(", ")} />
-        </div>
 
         {/* Body */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
           <div className="flex flex-col gap-6">
             <section className="rounded-md border bg-card p-6">
-              <h2 className="mb-4 text-lg font-semibold text-foreground">{text.detail.readme}</h2>
-              <div className="flex flex-col items-center gap-2 rounded-md border border-dashed bg-muted/30 px-6 py-10 text-center">
-                <FileText className="size-6 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">{text.detail.readmeEmpty}</p>
+              <h2 className="text-lg font-semibold text-foreground">
+                {text.detail.integration.heading}
+              </h2>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <IntegrationFeature
+                  icon={Lock}
+                  title={text.detail.integration.ssoTitle}
+                  body={text.detail.integration.ssoBody}
+                />
+                <IntegrationFeature
+                  icon={ArrowLeftRight}
+                  title={text.detail.integration.restTitle}
+                  body={text.detail.integration.restBody}
+                />
               </div>
             </section>
 
@@ -173,40 +176,47 @@ export default async function AddonDetailPage({
           </div>
 
           <aside className="flex flex-col gap-6">
-            <section className="flex flex-col gap-3 rounded-md border bg-card p-5">
-              <h2 className="text-sm font-semibold text-foreground">{text.detail.compatibility}</h2>
-              <ul className="flex flex-col gap-2">
-                {addon.compatibility.map((entry) => {
-                  const updated = formatTimestamp(entry.lastUpdated);
-                  return (
-                    <li
-                      key={entry.coreVersion}
-                      className="rounded-md border bg-background p-3 text-sm"
+            <section className="rounded-md border bg-card p-5">
+              <h2 className="text-sm font-semibold text-foreground">{text.detail.details}</h2>
+              <dl className="mt-3">
+                <DetailRow label={text.detail.publisher}>
+                  <span className="font-mono text-xs">{addon.author}</span>
+                </DetailRow>
+                {addon.licenses?.addon ? (
+                  <DetailRow label={text.detail.addonLicense}>
+                    <span className="font-mono text-xs">{addon.licenses.addon}</span>
+                  </DetailRow>
+                ) : null}
+                {addon.licenses?.tool ? (
+                  <DetailRow label={text.detail.toolLicense}>
+                    <span className="font-mono text-xs">{addon.licenses.tool}</span>
+                  </DetailRow>
+                ) : null}
+              </dl>
+              <div className="mt-4">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {text.detail.compatibility}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {coreVersions.map((version) => (
+                    <Badge
+                      key={version}
+                      variant="outline"
+                      className="border-transparent bg-muted font-mono font-normal"
                     >
-                      <p className="font-medium text-foreground">Civitas/Core {entry.coreVersion}</p>
-                      {entry.branch && (
-                        <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                          <GitBranch className="size-3" />
-                          {entry.branch}
-                        </p>
-                      )}
-                      {updated && (
-                        <p className="text-xs text-muted-foreground">
-                          {text.detail.updated}: {updated}
-                        </p>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
+                      Core {version}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
             </section>
 
-            <section className="flex flex-col gap-3 rounded-md border bg-card p-5">
+            <section className="rounded-md border bg-card p-5">
               <h2 className="text-sm font-semibold text-foreground">
                 {text.detail.requiredCapabilities}
               </h2>
               {addon.requiredCapabilities && addon.requiredCapabilities.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
+                <div className="mt-3 flex flex-wrap gap-1.5">
                   {addon.requiredCapabilities.map((capability) => (
                     <Badge
                       key={capability}
@@ -218,24 +228,24 @@ export default async function AddonDetailPage({
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">{text.detail.noCapabilities}</p>
+                <p className="mt-3 text-sm text-muted-foreground">{text.detail.noCapabilities}</p>
               )}
             </section>
 
-            {addon.repository && (
-              <section className="flex flex-col gap-2 rounded-md border bg-card p-5">
+            {addon.repository ? (
+              <section className="rounded-md border bg-card p-5">
                 <h2 className="text-sm font-semibold text-foreground">{text.detail.repository}</h2>
                 <a
                   href={addon.repository}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 break-all text-sm text-blue-600 hover:underline"
+                  className="mt-2 inline-flex items-center gap-1 break-all text-sm text-primary hover:underline"
                 >
                   {addon.repository.replace(/^https?:\/\//, "")}
                   <ExternalLink className="size-3 shrink-0" />
                 </a>
               </section>
-            )}
+            ) : null}
           </aside>
         </div>
       </div>

@@ -1,16 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Boxes, Building2, Link2 } from "lucide-react";
+import { ArrowLeft, Building2, Link2 } from "lucide-react";
 
 import { MarketplacePageShell } from "@/components/marketplace/page-shell";
-import { Badge } from "@/components/ui/badge";
+import { IncludedArtifactsSpec } from "@/components/use-cases/included-artifacts-spec";
 import { InstallUseCaseButton } from "@/components/use-cases/install-use-case-button";
+import { RequiredBuildingBlocks } from "@/components/use-cases/required-building-blocks";
+import { UseCaseFacts } from "@/components/use-cases/use-case-facts";
+import { MaturityBadge } from "@/components/use-cases/use-case-status";
 import { getUseCaseById } from "@/lib/getUseCases";
 import { getMarketplaceText } from "@/lib/marketplace-text";
-import {
-  USE_CASE_INSTALLABILITY_LABELS,
-  USE_CASE_MATURITY_LABELS,
-} from "@/types/use-cases";
 
 export default async function UseCaseDetailPage({
   params,
@@ -39,97 +38,83 @@ export default async function UseCaseDetailPage({
           {text.useCases.backToCatalog}
         </Link>
 
-        <section className="rounded-xl border bg-card p-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex max-w-3xl flex-col gap-3">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Building2 className="size-4" />
-                <span>{useCase.publisher}</span>
+        <section className="overflow-hidden rounded-xl border bg-card">
+          <div className="grid lg:grid-cols-[1fr_360px]">
+            <div className="flex flex-col gap-4 p-6 lg:p-8">
+              {useCase.categories.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {useCase.categories.map((category) => (
+                    <span
+                      key={category}
+                      className="inline-flex items-center rounded-md bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400"
+                    >
+                      {category}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <h1 className="text-3xl font-bold text-foreground lg:text-4xl">{useCase.title}</h1>
+              <p className="text-lg leading-relaxed text-muted-foreground">{useCase.summary}</p>
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <span className="flex items-center gap-2.5">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+                    <Building2 className="size-4" />
+                  </span>
+                  <span className="flex flex-col leading-tight">
+                    <span className="text-sm font-medium text-foreground">{useCase.publisher}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {text.useCases.publisherLabel}
+                    </span>
+                  </span>
+                </span>
+                <MaturityBadge maturity={useCase.maturity} />
               </div>
-              <h1 className="text-3xl font-bold text-foreground">{useCase.title}</h1>
-              <p className="text-sm leading-relaxed text-muted-foreground">{useCase.description}</p>
-              <div className="flex flex-wrap gap-1.5">
-                <Badge>{USE_CASE_MATURITY_LABELS[useCase.maturity]}</Badge>
-                <Badge variant="secondary">
-                  {USE_CASE_INSTALLABILITY_LABELS[useCase.installability]}
-                </Badge>
-                {useCase.compatibility.map((version) => (
-                  <Badge key={version} variant="outline">
-                    Core {version}
-                  </Badge>
-                ))}
+
+              <div className="mt-1 flex flex-col items-start gap-1.5">
+                <InstallUseCaseButton useCaseId={useCase.id} />
+                <p className="text-xs text-muted-foreground">{text.useCases.installDescription}</p>
               </div>
             </div>
 
-            <div className="flex shrink-0 flex-col gap-3 rounded-lg border bg-background p-4 lg:w-[280px]">
-              <h2 className="text-sm font-semibold text-foreground">Prototype Install</h2>
-              <p className="text-sm text-muted-foreground">
-                Der Button legt die Artefakte des Use-Cases (DataStructure + DataSet) direkt in
-                Model Forge an, falls sie noch nicht existieren, und speichert daraus lokal einen
-                Draft. Das Civitas Portal Backend wird dabei noch nicht aufgerufen.
-              </p>
-              <InstallUseCaseButton useCaseId={useCase.id} />
+            <div className="flex flex-col gap-3 border-t bg-success/5 p-6 lg:border-l lg:border-t-0 lg:p-8">
+              <p className="text-sm font-semibold text-foreground">{text.useCases.detailsHeading}</p>
+              <UseCaseFacts useCase={useCase} text={text} />
             </div>
           </div>
         </section>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
           <section className="flex flex-col gap-6">
-            <div className="rounded-md border bg-card p-6">
-              <div className="flex items-center gap-2">
-                <Boxes className="size-4 text-muted-foreground" />
-                <h2 className="text-lg font-semibold text-foreground">
-                  {text.useCases.includedArtifacts}
-                </h2>
-              </div>
-              <div className="mt-4 grid gap-3">
-                {useCase.includedArtifacts.map((artifact) => (
-                  <div key={artifact.id} className="rounded-md border bg-background p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-foreground">{artifact.title}</p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {artifact.description}
-                        </p>
-                      </div>
-                      <Badge variant="outline" className="uppercase tracking-wide">
-                        {artifact.kind}
-                      </Badge>
-                    </div>
-                    <p className="mt-3 break-all font-mono text-xs text-muted-foreground">
-                      {artifact.id}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <section className="rounded-md border bg-card p-6">
+              <h2 className="text-lg font-semibold text-foreground">{text.useCases.aboutHeading}</h2>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                {useCase.description}
+              </p>
+            </section>
 
+            <IncludedArtifactsSpec
+              title={text.useCases.includedArtifacts}
+              artifacts={useCase.includedArtifacts}
+              urn={useCase.modelForge.datasetId}
+            />
           </section>
 
           <aside className="flex flex-col gap-6">
+            {useCase.requiredCapabilities.length > 0 ? (
+              <RequiredBuildingBlocks
+                title={text.useCases.requiredHeading}
+                blocks={useCase.requiredCapabilities}
+              />
+            ) : null}
+
             <section className="rounded-md border bg-card p-5">
               <div className="flex items-center gap-2">
                 <Link2 className="size-4 text-muted-foreground" />
                 <h2 className="text-sm font-semibold text-foreground">{text.useCases.modelForgeSource}</h2>
               </div>
               <p className="mt-3 text-sm text-muted-foreground">{useCase.modelForge.note}</p>
-              <p className="mt-3 break-all rounded-md bg-background p-3 font-mono text-xs text-muted-foreground">
-                {useCase.modelForge.datasetId}
-              </p>
             </section>
-
-            {useCase.requiredCapabilities.length > 0 ? (
-              <section className="rounded-md border bg-card p-5">
-                <h2 className="text-sm font-semibold text-foreground">Required Capabilities</h2>
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {useCase.requiredCapabilities.map((capability) => (
-                    <Badge key={capability} variant="outline" className="uppercase tracking-wide">
-                      {capability}
-                    </Badge>
-                  ))}
-                </div>
-              </section>
-            ) : null}
           </aside>
         </div>
       </div>

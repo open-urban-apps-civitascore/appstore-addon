@@ -86,7 +86,6 @@ export const AddonCatalog = ({
         onChange={setFilters}
         categories={categories}
         coreVersions={coreVersions}
-        onReset={() => setFilters(INITIAL_FILTERS)}
       />
 
       <p className="text-sm text-muted-foreground">
