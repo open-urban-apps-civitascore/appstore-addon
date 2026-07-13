@@ -9,8 +9,9 @@ import type { InstalledUseCase } from "@/types/use-cases";
 export default async function InstalledPage() {
   const text = getMarketplaceText();
 
-  // This page reads its source of truth from Model Forge. Surface an unreachable
-  // Model Forge as an explicit notice rather than a 500 or a misleading "empty".
+  // This page reads its installs from the local install store and refreshes their
+  // status from the portal-backend (best-effort). Surface a hard read failure as an
+  // explicit notice rather than a 500 or a misleading "empty".
   let installations: InstalledUseCase[] = [];
   let loadError: string | null = null;
   try {
@@ -34,9 +35,9 @@ export default async function InstalledPage() {
           <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
             <div>
-              <p className="font-medium">Installierte Use-Cases konnten nicht aus Model Forge geladen werden.</p>
+              <p className="font-medium">Installierte Anwendungsfälle konnten nicht geladen werden.</p>
               <p className="mt-1 text-amber-700 dark:text-amber-400">
-                Läuft Model Forge? ({loadError})
+                Der lokale Installations-Speicher ist nicht lesbar. ({loadError})
               </p>
             </div>
           </div>

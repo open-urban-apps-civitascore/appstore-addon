@@ -37,92 +37,40 @@ AUTH_SECRET="your-local-random-development-secret-string"
 AUTH_KEYCLOAK_ID="marketplace-addon"
 AUTH_KEYCLOAK_SECRET="<paste-your-client-secret-here>"
 AUTH_KEYCLOAK_ISSUER="http://localhost:8080/realms/civitas-core"
-MODELFORGE_BASE_URL="http://localhost:8001"
-MODELFORGE_API_KEY="your-secret-key-here"
+# The CivitasCore portal-backend REST API (the install path).
+PORTAL_BACKEND_BASE_URL="http://localhost:8080"
+# Dev-only stub for the gateway-injected auth headers (see below).
+PORTAL_BACKEND_ALLOWED_SCOPE_IDS="*"
 ```
 
-### 4. Start Model Forge for the Use-Case Install Demo
-The Marketplace "Als Entwurf installieren" flow now reads the referenced DataSet
-directly from Model Forge before storing a local draft in the Marketplace app.
+### 4. About the Use-Case Install Flow (portal-backend)
+Installing a use case provisions a *running* use case through the CivitasCore
+portal-backend REST API. The install orchestrator drives the DataSet lifecycle, in
+order:
 
-Start Model Forge separately, for example:
-
-```bash
-cd ../../model-forge
-docker compose up -d --build postgres model-forge
+```
+datastructure(s) → datasource → dataset(DRAFT) → pipeline + datasink
+  → stage(DRAFT→READY) → release(READY→AVAILABLE, async)
 ```
 
-If you are already running the CIVITAS/CORE platform locally and `8000` / `5432`
-are occupied, use the port overrides documented in the Model-Forge README, for
-example:
+The `release` returns `202 Accepted` and kicks off the platform's provisioning saga
+(FROST project, APISIX route, NiFi pipeline); the marketplace records the install
+locally and reflects the dataset's lifecycle status on the `Installiert` page.
+Uninstall calls `unrelease` (tears the infrastructure back down) + `DELETE`.
 
-```bash
-MODELFORGE_HTTP_PORT=8001
-MODELFORGE_DB_PORT=5544
-MODELFORGE_PGADMIN_PORT=5051
-```
+> **Status of this path.** The endpoints, ordering, lifecycle and auth headers are
+> implemented against the verified platform contract, but this repo has no live
+> portal-backend or its OpenAPI spec, so the **request-body field names are
+> assumptions**. They are centralized in one place —
+> `lib/server/portal-backend/mapper.ts` — each marked `TODO(confirm)`. An
+> end-to-end install cannot be verified here; confirm the payloads against a live
+> instance / a local spike before relying on it.
 
-The Marketplace expects a reachable DataSet for the `Baumkataster Starter`
-demo-use-case. The minimal setup is:
-
-1. Create the DataSet in Model Forge.
-2. Create the `TreeRecord` DataStructure in Model Forge.
-3. Attach the `TreeRecord` URN to the DataSet via `PUT /api/v1/datasets?id=...`.
-
-The exact demo commands are:
-
-```bash
-curl -sS -X POST \
-  'http://localhost:8001/api/v1/datasets' \
-  -H 'Content-Type: application/json' \
-  -H 'X-API-Key: your-secret-key-here' \
-  -d '{"title":"Baumkataster Starter"}'
-
-curl -sS -X POST \
-  'http://localhost:8001/api/v1/datastructures' \
-  -H 'Content-Type: application/json' \
-  -H 'X-API-Key: your-secret-key-here' \
-  -d '{
-    "schema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "$id": "urn:core:platform:civitas:datastructure:demo:TreeRecord:1.0.0",
-      "title": "TreeRecord",
-      "type": "object",
-      "required": ["treeId", "species", "location"],
-      "properties": {
-        "treeId": { "type": "string" },
-        "species": { "type": "string" },
-        "plantedAt": { "type": "string", "format": "date" },
-        "location": {
-          "type": "object",
-          "required": ["lat", "lon"],
-          "properties": {
-            "lat": { "type": "number" },
-            "lon": { "type": "number" }
-          }
-        }
-      }
-    }
-  }'
-
-curl -sS -X PUT \
-  'http://localhost:8001/api/v1/datasets?id=urn%3Acore%3Aplatform%3Acivitas%3Adataset%3Acommon%3ABaumkataster-Starter%3A1.0.0' \
-  -H 'Content-Type: application/json' \
-  -H 'X-API-Key: your-secret-key-here' \
-  -d '{
-    "id": "urn:core:platform:civitas:dataset:common:Baumkataster-Starter:1.0.0",
-    "title": "Baumkataster Starter",
-    "description": "Als Entwurf importierter Datensatz für einen kommunalen Baumkataster-Prototyp.",
-    "version": "1.0",
-    "dataStructureRefs": [
-      "urn:core:platform:civitas:datastructure:demo:TreeRecord:1.0.0"
-    ],
-    "dataSourceRefs": [],
-    "dataSinkRefs": [],
-    "mappingRefs": [],
-    "pipelineRefs": []
-  }'
-```
+**Auth headers.** The portal-backend's data-entity endpoints expect
+`X-Allowed-Scope-Ids` and `X-Api-Request: true`, normally injected by APISIX + OPA
+after a Keycloak login. This is abstracted behind a pluggable provider
+(`lib/server/portal-backend/auth.ts`). Dev uses a stub that emits configured/
+placeholder headers; the real Keycloak-token + gateway flow is a documented `TODO`.
 
 ### 5. Start the Dev Server
 ```bash
@@ -138,11 +86,17 @@ Use the following path:
 1. Log in to the Marketplace.
 2. Open `Anwendungsfälle`.
 3. Open `Baumkataster Starter`.
-4. Click `Als Entwurf installieren`.
+4. Click `Im Portal-Backend bereitstellen`.
 5. On the `Installiert` page:
-   - inspect the generated draft
-   - open `Importprotokoll anzeigen` to see the Model-Forge request, response and local draft payload
-   - use `Entwurf entfernen` to reset the local Marketplace state for another test run
+   - inspect the provisioned use case and its lifecycle status
+   - open `Provisionierungsprotokoll anzeigen` to see the ordered portal-backend
+     call sequence (with response status codes)
+   - use `Entwurf entfernen` to unrelease + delete on the portal-backend and reset
+     the local Marketplace state for another test run
+
+> Until the assumed payload field names are confirmed against a live portal-backend
+> (see step 4), a real install will not complete end-to-end; the sequence, headers
+> and lifecycle handling are exercised by the unit tests (`npm test`).
 
 ---
 

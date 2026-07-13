@@ -10,28 +10,31 @@ export const includedArtifactSchema = z.object({
   description: z.string().optional(),
 });
 
-export const modelForgeDatasetRefSchema = z.object({
+// A reference to a CORE dataset (its URN), carried by a catalog use case — the
+// platform-level identity of the use case's dataset, not an install target.
+// NOTE: the catalog JSON key stays `modelForge` (see `useCaseSchema` below) for
+// backward compatibility with published index.json data; the catalog schema is out
+// of scope to change. Only this internal schema/type name is de-Model-Forge'd.
+export const datasetReferenceSchema = z.object({
   datasetId: z.string(),
   note: z.string().optional(),
 });
+
+// The lifecycle state of a portal-backend dataset, projected onto the app:
+// DRAFT → (stage) → READY → (release, async) → AVAILABLE. PROVISIONING is an
+// app-level pseudo-state for "release accepted (202) / saga in flight" before the
+// dataset reaches AVAILABLE.
+export const datasetLifecycleStatusSchema = z.enum([
+  "DRAFT",
+  "READY",
+  "PROVISIONING",
+  "AVAILABLE",
+]);
 
 export const draftDatasetTemplateSchema = z.object({
   name: z.string(),
   description: z.string(),
   openDataAccess: z.boolean().default(false),
-});
-
-export const modelForgeDataSetSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  description: z.string().nullish(),
-  version: z.string().nullish(),
-  labels: z.record(z.string(), z.string()).nullish(),
-  dataStructureRefs: z.array(z.string()).default([]),
-  dataSourceRefs: z.array(z.string()).default([]),
-  dataSinkRefs: z.array(z.string()).default([]),
-  mappingRefs: z.array(z.string()).default([]),
-  pipelineRefs: z.array(z.string()).default([]),
 });
 
 // A concrete building block a use case needs (mirrors the marketplace taxonomy:
@@ -59,7 +62,9 @@ export const useCaseSchema = z.object({
   requiredCapabilities: z.array(requiredBuildingBlockSchema).default([]),
   installQuestions: z.array(z.string()).default([]),
   includedArtifacts: z.array(includedArtifactSchema).default([]),
-  modelForge: modelForgeDatasetRefSchema,
+  // Catalog JSON key kept as `modelForge` for backward compatibility (see
+  // `datasetReferenceSchema`); it is a reference to the use case's CORE dataset URN.
+  modelForge: datasetReferenceSchema,
   // The git artifact repo the use case installs from: its CORE-IR bundle is
   // fetched at `gitIdentifier`. Required (all-reference model — the catalog only
   // *references* content, never inlines it). The ref must be an immutable pin — a
@@ -85,25 +90,19 @@ export const useCaseCatalogSchema = z.object({
   useCases: z.array(useCaseSchema),
 });
 
-export const installedUseCaseImportTraceSchema = z.object({
-  importedAt: z.string().datetime(),
-  modelForgeRequest: z.object({
-    method: z.enum(["GET", "POST", "PUT"]),
-    url: z.string(),
-    datasetId: z.string(),
-  }),
-  modelForgeResponse: modelForgeDataSetSchema,
-  localDraft: z.object({
-    createdDataset: draftDatasetTemplateSchema.extend({
-      status: z.literal("DRAFT"),
-    }),
-    createdDataStructures: z.array(
-      z.object({
-        name: z.string(),
-        version: z.string(),
-      }),
-    ),
-  }),
+// A lightweight, ordered trace of the portal-backend provisioning sequence,
+// surfaced in the UI (replaces the old single-request Model Forge import trace).
+// Each step is one REST call the install orchestrator made.
+export const provisioningStepSchema = z.object({
+  label: z.string(),
+  method: z.string(),
+  path: z.string(),
+  status: z.number(),
+});
+
+export const provisioningTraceSchema = z.object({
+  provisionedAt: z.string().datetime(),
+  steps: z.array(provisioningStepSchema),
 });
 
 export const installedUseCaseSchema = z.object({
@@ -111,10 +110,13 @@ export const installedUseCaseSchema = z.object({
   useCaseId: z.string(),
   useCaseTitle: z.string(),
   installedAt: z.string().datetime(),
-  status: z.literal("DRAFT"),
-  source: z.enum(["dummy-marketplace-install", "model-forge-dataset-import", "model-forge-created"]),
+  status: datasetLifecycleStatusSchema,
+  // Every install now goes through the CivitasCore portal-backend. The retired
+  // Model Forge sources (`model-forge-created`, `model-forge-dataset-import`) are
+  // gone; local install state is new, so there are no legacy records to parse.
+  source: z.enum(["portal-backend"]),
   createdDataset: draftDatasetTemplateSchema.extend({
-    status: z.literal("DRAFT"),
+    status: datasetLifecycleStatusSchema,
   }),
   createdDataStructures: z.array(
     z.object({
@@ -122,8 +124,9 @@ export const installedUseCaseSchema = z.object({
       version: z.string(),
     }),
   ),
-  modelForge: modelForgeDatasetRefSchema,
-  lastImportTrace: installedUseCaseImportTraceSchema.optional(),
+  // The use case's CORE dataset reference (URN), carried for display/traceability.
+  datasetRef: datasetReferenceSchema,
+  provisioningTrace: provisioningTraceSchema.optional(),
 });
 
 export const installedUseCaseListSchema = z.array(installedUseCaseSchema);
@@ -132,13 +135,21 @@ export type UseCase = z.infer<typeof useCaseSchema>;
 export type RequiredBuildingBlock = z.infer<typeof requiredBuildingBlockSchema>;
 export type UseCaseCatalog = z.infer<typeof useCaseCatalogSchema>;
 export type InstalledUseCase = z.infer<typeof installedUseCaseSchema>;
-export type ModelForgeDataSet = z.infer<typeof modelForgeDataSetSchema>;
-export type InstalledUseCaseImportTrace = z.infer<typeof installedUseCaseImportTraceSchema>;
+export type DatasetReference = z.infer<typeof datasetReferenceSchema>;
+export type DatasetLifecycleStatus = z.infer<typeof datasetLifecycleStatusSchema>;
+export type ProvisioningStep = z.infer<typeof provisioningStepSchema>;
+export type ProvisioningTrace = z.infer<typeof provisioningTraceSchema>;
 
 export const INSTALLED_USE_CASE_SOURCE_LABELS: Record<InstalledUseCase["source"], string> = {
-  "dummy-marketplace-install": "Lokaler Demo-Entwurf",
-  "model-forge-dataset-import": "Aus Model Forge importiert",
-  "model-forge-created": "In Model Forge angelegt",
+  "portal-backend": "Über das Portal-Backend bereitgestellt",
+};
+
+// German labels for the dataset lifecycle status shown on an installation.
+export const DATASET_LIFECYCLE_STATUS_LABELS: Record<DatasetLifecycleStatus, string> = {
+  DRAFT: "Entwurf",
+  READY: "Bereit",
+  PROVISIONING: "Wird provisioniert",
+  AVAILABLE: "Verfügbar",
 };
 
 export const USE_CASE_MATURITY_LABELS: Record<z.infer<typeof useCaseMaturitySchema>, string> = {

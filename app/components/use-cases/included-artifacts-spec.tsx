@@ -7,12 +7,12 @@ import { INCLUDED_ARTIFACT_KIND_LABELS, type UseCase } from "@/types/use-cases";
 interface IncludedArtifactsSpecProps {
   title: string;
   artifacts: UseCase["includedArtifacts"];
-  /** Dataset-level ModelForge URN, pinned at the bottom for traceability. */
+  /** Dataset-level CORE URN, pinned at the bottom for traceability. */
   urn: string;
 }
 
 /**
- * Technical spec of a use case: its ModelForge artifacts rendered as a compact,
+ * Technical spec of a use case: its CORE artifacts rendered as a compact,
  * scannable list — a fixed-width mono type badge, the artifact title, and the
  * version parsed out of the artifact's own URN — with the dataset URN pinned
  * below. Replaces the earlier one-card-per-artifact layout so a use case with
@@ -57,7 +57,7 @@ export function IncludedArtifactsSpec({ title, artifacts, urn }: IncludedArtifac
 
       <div className="mt-5 border-t pt-4">
         <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
-          ModelForge URN
+          CORE Dataset URN
         </p>
         <p className="mt-1 break-all font-mono text-xs text-foreground/80">{urn}</p>
       </div>

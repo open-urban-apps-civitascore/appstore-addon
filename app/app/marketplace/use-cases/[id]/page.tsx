@@ -111,7 +111,7 @@ export default async function UseCaseDetailPage({
             <section className="rounded-md border bg-card p-5">
               <div className="flex items-center gap-2">
                 <Link2 className="size-4 text-muted-foreground" />
-                <h2 className="text-sm font-semibold text-foreground">{text.useCases.modelForgeSource}</h2>
+                <h2 className="text-sm font-semibold text-foreground">{text.useCases.datasetReference}</h2>
               </div>
               <p className="mt-3 text-sm text-muted-foreground">{useCase.modelForge.note}</p>
             </section>

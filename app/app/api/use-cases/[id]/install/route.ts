@@ -3,10 +3,22 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { getUseCaseById } from "@/lib/getUseCases";
 import { BundleError } from "@/lib/server/bundle";
-import { ModelForgeError, provisionUseCaseInModelForge } from "@/lib/server/model-forge";
-import { installUseCaseById, removeInstalledUseCaseById } from "@/lib/use-case-installations";
+import { PortalBackendError } from "@/lib/server/portal-backend/errors";
+import { installUseCase } from "@/lib/server/portal-backend/install";
+import { removeInstalledUseCaseById } from "@/lib/use-case-installations";
 
 export const runtime = "nodejs";
+
+/** Map an install/uninstall error onto an HTTP response. */
+function errorResponse(error: unknown): NextResponse {
+  if (error instanceof PortalBackendError || error instanceof BundleError) {
+    return NextResponse.json({ error: error.message }, { status: error.status });
+  }
+  return NextResponse.json(
+    { error: error instanceof Error ? error.message : "The use case installation failed." },
+    { status: 500 },
+  );
+}
 
 export async function POST(
   _request: Request,
@@ -24,30 +36,15 @@ export async function POST(
   }
 
   try {
-    const { dataSet, created } = await provisionUseCaseInModelForge(useCase);
-    const installation = await installUseCaseById(
-      id,
-      dataSet,
-      created ? "model-forge-created" : "model-forge-dataset-import",
-    );
-
+    const { record, created } = await installUseCase(useCase);
     return NextResponse.json({
       message: created
-        ? "Use case provisioned in Model Forge"
-        : "Existing Model Forge dataset linked",
-      installation,
+        ? "Use case provisioned via the CivitasCore portal-backend"
+        : "Existing portal-backend install reused",
+      installation: record,
     });
   } catch (error) {
-    if (error instanceof ModelForgeError || error instanceof BundleError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "The use case installation failed.",
-      },
-      { status: 500 },
-    );
+    return errorResponse(error);
   }
 }
 
@@ -61,11 +58,14 @@ export async function DELETE(
   }
 
   const { id } = await params;
-  const deleted = await removeInstalledUseCaseById(id);
 
-  if (!deleted) {
-    return NextResponse.json({ error: "Installed draft not found" }, { status: 404 });
+  try {
+    const removed = await removeInstalledUseCaseById(id);
+    if (!removed) {
+      return NextResponse.json({ error: "Installed use case not found" }, { status: 404 });
+    }
+    return NextResponse.json({ message: "Installed use case removed" });
+  } catch (error) {
+    return errorResponse(error);
   }
-
-  return NextResponse.json({ message: "Installed draft removed" });
 }

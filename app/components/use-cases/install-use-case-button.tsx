@@ -42,7 +42,7 @@ export function InstallUseCaseButton({ useCaseId }: { useCaseId: string }) {
     <div className="flex flex-col items-start gap-2">
       <Button onClick={handleInstall} disabled={isPending}>
         {isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-        {isPending ? "Wird angelegt…" : "In Model Forge anlegen"}
+        {isPending ? "Wird bereitgestellt…" : "Im Portal-Backend bereitstellen"}
       </Button>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
     </div>

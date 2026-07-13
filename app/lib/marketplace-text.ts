@@ -37,7 +37,7 @@ export interface MarketplaceTexts {
     noResults: string;
     installQuestions: string;
     includedArtifacts: string;
-    modelForgeSource: string;
+    datasetReference: string;
     backToCatalog: string;
     emptyInstalled: string;
     installedHeading: string;
@@ -132,16 +132,16 @@ const MARKETPLACE_TEXT_DE: Omit<MarketplaceTexts, "locale"> = {
   useCases: {
     heading: "Anwendungsfälle",
     subtitle:
-      "Wiederverwendbare Use Cases als kontrollierter Entwurfsimport. Der Installationsfluss liest den referenzierten Datensatz direkt aus Model Forge und legt daraus lokal einen Draft an.",
+      "Wiederverwendbare Use Cases. Die Installation stellt den Anwendungsfall über das CivitasCore Portal-Backend bereit: Der DataSet-Lebenszyklus löst die Provisionierung (FROST-Projekt, APISIX-Route, NiFi-Pipeline) aus.",
     noResults: "Noch keine Anwendungsfälle im Katalog.",
     installQuestions: "Installationsfragen",
     includedArtifacts: "Enthaltene Artefakte",
-    modelForgeSource: "Model-Forge-Quelldatensatz",
+    datasetReference: "Referenzierter CORE-Datensatz",
     backToCatalog: "Zurück zu den Anwendungsfällen",
     emptyInstalled: "Es wurden noch keine Anwendungsfälle installiert.",
-    installedHeading: "Installierte Entwürfe",
+    installedHeading: "Installierte Anwendungsfälle",
     installedSubtitle:
-      "Diese Liste zeigt die lokal erzeugten Draft-Installationen des Marketplace-Prototyps aus dem aktuellen Model-Forge-Datensatz inklusive Importprotokoll.",
+      "Diese Liste zeigt die über das Portal-Backend bereitgestellten Anwendungsfälle inklusive Provisionierungsprotokoll und aktuellem Lebenszyklus-Status.",
     detailsHeading: "Details",
     installabilityLabel: "Installierbarkeit",
     compatibilityLabel: "Kompatibilität",
@@ -149,7 +149,7 @@ const MARKETPLACE_TEXT_DE: Omit<MarketplaceTexts, "locale"> = {
     sourceLabel: "Quelle",
     installHeading: "Installieren",
     installDescription:
-      "Legt die enthaltenen Artefakte in Model Forge an und erstellt daraus lokal einen Entwurf. Das Portal-Backend wird dabei noch nicht aufgerufen.",
+      "Stellt den Anwendungsfall über das CivitasCore Portal-Backend bereit. Der DataSet-Lebenszyklus (stage → release) löst die Provisionierung der Infrastruktur aus.",
     requiredHeading: "Benötigt",
     aboutHeading: "Worum es geht",
     publisherLabel: "Herausgeber",

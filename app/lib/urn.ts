@@ -1,5 +1,5 @@
 /**
- * Minimal parser for CORE URNs as used by Model Forge.
+ * Minimal parser for CivitasCore (CORE) URNs.
  *
  * Canonical shape: `urn:core:<scope>:<owner>:<type>:<group>:<name>[:<version>]`
  * e.g. `urn:core:platform:civitas:datastructure:demo:TreeRecord:1.0.0`
