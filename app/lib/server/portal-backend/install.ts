@@ -2,6 +2,7 @@ import { fetchUseCaseBundle, type UseCaseBundle } from "@/lib/server/bundle";
 import { getInstallStore, type InstallStore } from "@/lib/server/install-store";
 import { createAuthHeaderProvider, requiredPortalBackendEnv } from "@/lib/server/portal-backend/auth";
 import { PortalBackendClient } from "@/lib/server/portal-backend/client";
+import { PortalBackendError } from "@/lib/server/portal-backend/errors";
 import {
   buildInstallPlan,
   readDatasetState,
@@ -36,6 +37,11 @@ import {
  *   → stage (DRAFT→READY) → release (READY→AVAILABLE, async saga)
  *   → poll until `pendingSagaType` clears, then read the true outcome
  *     (AVAILABLE = provisioned; READY = saga failed and was compensated)
+ *
+ * If ANY step throws mid-sequence, everything created so far is torn down again
+ * (best-effort, same bottom-up cascade as uninstall) before the error propagates —
+ * otherwise released-but-unrecorded resources would be stranded on the backend,
+ * invisible to both the idempotency check and uninstall.
  *
  * Responsibilities split cleanly: the {@link PortalBackendClient} knows endpoints +
  * transport, the mapper knows payload field names, this module knows *sequence and
@@ -100,7 +106,11 @@ export async function installUseCase(useCase: UseCase, deps?: InstallDeps): Prom
       await d.store.save(record);
       return { record, created: false };
     }
-    // Stale record: the dataset was deleted out-of-band. Drop it and reinstall.
+    // Stale record: the dataset was deleted out-of-band (e.g. portal UI). The
+    // datasource + datastructures exist independently of the dataset row, and this
+    // record is the ONLY holder of their ids — tear them down before dropping it,
+    // or they are orphaned forever and the reinstall duplicates them.
+    await teardownBackendResources(d, existing.id, existing.provisionedResources);
     await d.store.remove(useCase.id);
   }
 
@@ -108,123 +118,136 @@ export async function installUseCase(useCase: UseCase, deps?: InstallDeps): Prom
   const bundle = await d.fetchBundle(useCase.source);
   const plan = buildInstallPlan(bundle);
   const steps: ProvisioningStep[] = [];
-  const structures: ProvisionedResources["dataStructures"] = [];
 
-  // 1. Datastructures — create, attach the versioned schema, then release BOTH the
-  //    version and the structure itself (the backend only links AVAILABLE parents).
-  for (const ds of plan.datastructures) {
-    const created = await d.client.createDatastructure(ds.createBody);
-    steps.push(step(`datastructure ${ds.name}`, "POST", "/datastructures", created.status));
+  // Filled as the sequence progresses; on a mid-sequence failure this is exactly
+  // what the rollback needs to tear down.
+  const partial: ProvisionedResources = { dataStructures: [] };
+  let datasetId: string | null = null;
 
-    const version = await d.client.createDatastructureVersion(created.id, ds.versionBody);
+  try {
+    // 1. Datastructures — create, attach the versioned schema, then release BOTH the
+    //    version and the structure itself (the backend only links AVAILABLE parents).
+    for (const ds of plan.datastructures) {
+      const created = await d.client.createDatastructure(ds.createBody);
+      steps.push(step(`datastructure ${ds.name}`, "POST", "/datastructures", created.status));
+
+      const version = await d.client.createDatastructureVersion(created.id, ds.versionBody);
+      steps.push(
+        step(`datastructure version ${ds.name}@${ds.version}`, "POST", `/datastructures/${created.id}/versions`, version.status),
+      );
+      // Track as soon as both ids exist — a failure below must clean this up too.
+      partial.dataStructures.push({ id: created.id, versionId: version.id, name: ds.name, version: ds.version });
+
+      const versionRelease = await d.client.releaseDatastructureVersion(created.id, version.id);
+      steps.push(
+        step(`release version ${ds.name}@${ds.version}`, "POST", `/datastructures/${created.id}/versions/${version.id}/release`, versionRelease),
+      );
+
+      const structureRelease = await d.client.releaseDatastructure(created.id);
+      steps.push(
+        step(`release datastructure ${ds.name}`, "POST", `/datastructures/${created.id}/release`, structureRelease),
+      );
+    }
+
+    // The version the datasource + FROST sink wire to. The bundle's
+    // `dataStructureRefs` are in DEPENDENCY order ("a referenced element comes
+    // before its user" — see bundle.ts), so the top-level record the use case is
+    // about comes LAST. TODO(content): make this an explicit bundle field.
+    const primaryVersionId = partial.dataStructures.at(-1)?.versionId;
+    if (!primaryVersionId) {
+      throw new Error(`Use case ${useCase.id}: bundle contains no datastructures to install.`);
+    }
+
+    // 2. Datasource — links the released version; must itself be released before the
+    //    pipeline may link it.
+    const datasource = await d.client.createDatasource(
+      toDatasourceBody(useCase, bundle, primaryVersionId),
+    );
+    partial.dataSourceId = datasource.id;
+    steps.push(step("datasource", "POST", "/datasources", datasource.status));
+
+    const datasourceRelease = await d.client.releaseDatasource(datasource.id);
+    steps.push(step("release datasource", "POST", `/datasources/${datasource.id}/release`, datasourceRelease));
+
+    // 3. Dataset — created in DRAFT (the aggregate root of the use case).
+    const dataset = await d.client.createDataset(toDatasetBody(bundle));
+    datasetId = dataset.id;
+    steps.push(step("dataset (DRAFT)", "POST", "/datasets", dataset.status));
+
+    // 4. Datasink FIRST (the pipeline links it via dataSinkIds), then the pipeline.
+    const datasink = await d.client.createDatasink(datasetId, toDatasinkBody(primaryVersionId));
+    partial.dataSinkId = datasink.id;
+    steps.push(step("datasink (FROST)", "POST", `/datasets/${datasetId}/datasinks`, datasink.status));
+
+    const pipeline = await d.client.createPipeline(
+      datasetId,
+      toPipelineBody(bundle, datasource.id, datasink.id),
+    );
+    partial.pipelineId = pipeline.id;
+    steps.push(step("pipeline", "POST", `/datasets/${datasetId}/pipelines`, pipeline.status));
+
+    // 5. Lifecycle: stage validates the pipeline wiring (DRAFT→READY)…
+    const stageStatus = await d.client.stageDataset(datasetId);
+    steps.push(step("stage (DRAFT→READY)", "POST", `/datasets/${datasetId}/stage`, stageStatus));
+
+    // …then release triggers the async provisioning saga (READY→AVAILABLE).
+    const release = await d.client.releaseDataset(datasetId);
     steps.push(
-      step(`datastructure version ${ds.name}@${ds.version}`, "POST", `/datastructures/${created.id}/versions`, version.status),
+      step(
+        release.kind === "in-flight" ? "release (409 saga already in flight)" : "release (saga started)",
+        "POST",
+        `/datasets/${datasetId}/release`,
+        release.status,
+      ),
     );
 
-    const versionRelease = await d.client.releaseDatastructureVersion(created.id, version.id);
-    steps.push(
-      step(`release version ${ds.name}@${ds.version}`, "POST", `/datastructures/${created.id}/versions/${version.id}/release`, versionRelease),
-    );
+    // 6. The saga is asynchronous AND the status flips optimistically to AVAILABLE
+    //    before the saga finishes — a single read lies. Poll until `pendingSagaType`
+    //    clears; only then is `dataSetStatus` the true outcome.
+    const { status, sagaOutcome } = await awaitSagaOutcome(d, datasetId);
+    if (sagaOutcome) steps.push(step(sagaOutcome, "GET", `/datasets/${datasetId}`, 200));
 
-    const structureRelease = await d.client.releaseDatastructure(created.id);
-    steps.push(
-      step(`release datastructure ${ds.name}`, "POST", `/datastructures/${created.id}/release`, structureRelease),
-    );
-
-    structures.push({ id: created.id, versionId: version.id, name: ds.name, version: ds.version });
-  }
-
-  // The version the datasource + FROST sink wire to. Convention: the bundle's first
-  // element is the primary structure. TODO(content): make this an explicit bundle field.
-  const primaryVersionId = structures[0]?.versionId;
-  if (!primaryVersionId) {
-    throw new Error(`Use case ${useCase.id}: bundle contains no datastructures to install.`);
-  }
-
-  // 2. Datasource — links the released version; must itself be released before the
-  //    pipeline may link it.
-  const datasource = await d.client.createDatasource(
-    toDatasourceBody(useCase, bundle, primaryVersionId),
-  );
-  steps.push(step("datasource", "POST", "/datasources", datasource.status));
-
-  const datasourceRelease = await d.client.releaseDatasource(datasource.id);
-  steps.push(step("release datasource", "POST", `/datasources/${datasource.id}/release`, datasourceRelease));
-
-  // 3. Dataset — created in DRAFT (the aggregate root of the use case).
-  const dataset = await d.client.createDataset(toDatasetBody(bundle));
-  const datasetId = dataset.id;
-  steps.push(step("dataset (DRAFT)", "POST", "/datasets", dataset.status));
-
-  // 4. Datasink FIRST (the pipeline links it via dataSinkIds), then the pipeline.
-  const datasink = await d.client.createDatasink(datasetId, toDatasinkBody(primaryVersionId));
-  steps.push(step("datasink (FROST)", "POST", `/datasets/${datasetId}/datasinks`, datasink.status));
-
-  const pipeline = await d.client.createPipeline(
-    datasetId,
-    toPipelineBody(bundle, datasource.id, datasink.id),
-  );
-  steps.push(step("pipeline", "POST", `/datasets/${datasetId}/pipelines`, pipeline.status));
-
-  // 5. Lifecycle: stage validates the pipeline wiring (DRAFT→READY)…
-  const stageStatus = await d.client.stageDataset(datasetId);
-  steps.push(step("stage (DRAFT→READY)", "POST", `/datasets/${datasetId}/stage`, stageStatus));
-
-  // …then release triggers the async provisioning saga (READY→AVAILABLE).
-  const release = await d.client.releaseDataset(datasetId);
-  steps.push(
-    step(
-      release.kind === "in-flight" ? "release (409 saga already in flight)" : "release (saga started)",
-      "POST",
-      `/datasets/${datasetId}/release`,
-      release.status,
-    ),
-  );
-
-  // 6. The saga is asynchronous AND the status flips optimistically to AVAILABLE
-  //    before the saga finishes — a single read lies. Poll until `pendingSagaType`
-  //    clears; only then is `dataSetStatus` the true outcome.
-  const { status, sagaOutcome } = await awaitSagaOutcome(d, datasetId);
-  if (sagaOutcome) steps.push(step(sagaOutcome, "GET", `/datasets/${datasetId}`, 200));
-
-  const record = installedUseCaseSchema.parse({
-    id: datasetId,
-    useCaseId: useCase.id,
-    useCaseTitle: useCase.title,
-    installedAt: d.now().toISOString(),
-    status,
-    source: "portal-backend",
-    createdDataset: {
-      name: plan.summary.datasetTitle,
-      description: plan.summary.datasetDescription,
-      openDataAccess: false,
+    const record = installedUseCaseSchema.parse({
+      id: datasetId,
+      useCaseId: useCase.id,
+      useCaseTitle: useCase.title,
+      installedAt: d.now().toISOString(),
       status,
-    },
-    createdDataStructures: plan.summary.dataStructures,
-    datasetRef: useCase.modelForge,
-    provisioningTrace: { provisionedAt: d.now().toISOString(), steps },
-    provisionedResources: {
-      dataStructures: structures,
-      dataSourceId: datasource.id,
-      dataSinkId: datasink.id,
-      pipelineId: pipeline.id,
-    },
-  } satisfies InstalledUseCase);
+      source: "portal-backend",
+      createdDataset: {
+        name: plan.summary.datasetTitle,
+        description: plan.summary.datasetDescription,
+        openDataAccess: false,
+        status,
+      },
+      createdDataStructures: plan.summary.dataStructures,
+      datasetRef: useCase.modelForge,
+      provisioningTrace: { provisionedAt: d.now().toISOString(), steps },
+      provisionedResources: partial,
+    } satisfies InstalledUseCase);
 
-  await d.store.save(record);
-  return { record, created: true };
+    await d.store.save(record);
+    return { record, created: true };
+  } catch (error) {
+    // Roll back whatever this attempt created (best-effort): without a stored
+    // record these resources would be invisible to uninstall AND to the
+    // idempotency check, and a retry would provision a duplicate graph.
+    await teardownBackendResources(d, datasetId, partial).catch((cleanupError) => {
+      console.error(
+        `[portal-backend] install rollback for '${useCase.id}' left resources behind:`,
+        cleanupError,
+        "created so far:",
+        JSON.stringify({ datasetId, ...partial }),
+      );
+    });
+    throw error;
+  }
 }
 
 /**
  * Uninstall = tear down whatever the install created, in the verified bottom-up
- * order (references block deletion hard with 400/409):
- *
- *   AVAILABLE → unrelease (infra teardown saga) → poll · READY → unstage
- *   → delete pipeline → delete datasink → delete dataset
- *   → unrelease + delete datasource → unrelease + delete datastructures
- *
- * Records written before `provisionedResources` existed fall back to removing only
- * the dataset. Returns false when nothing is installed for this use case.
+ * order. Records written before `provisionedResources` existed fall back to
+ * removing only the dataset. Returns false when nothing is installed.
  */
 export async function uninstallUseCase(useCaseId: string, deps?: InstallDeps): Promise<boolean> {
   const d = deps ?? defaultInstallDeps();
@@ -232,40 +255,80 @@ export async function uninstallUseCase(useCaseId: string, deps?: InstallDeps): P
   const record = await d.store.get(useCaseId);
   if (!record) return false;
 
-  const datasetId = record.id;
-  const resources = record.provisionedResources;
-  const live = await d.client.getDataset(datasetId);
+  await teardownBackendResources(d, record.id, record.provisionedResources);
+  await d.store.remove(useCaseId);
+  return true;
+}
 
-  if (live !== null) {
-    const state = readDatasetState(live);
+/**
+ * The verified bottom-up teardown cascade (references block deletion hard with
+ * 400/409). Shared by uninstall and the install-failure rollback:
+ *
+ *   saga in flight? → WAIT for it first (unrelease during a saga hits the 409
+ *   guard, and the branch must be chosen on the true post-saga status)
+ *   → AVAILABLE: unrelease (infra-teardown saga) + wait · READY: unstage
+ *   → delete pipeline → delete datasink → delete dataset
+ *   → unrelease + delete datasource → unrelease + delete datastructures
+ *
+ * The unrelease calls on datasource/datastructures are best-effort (a rolled-back
+ * install may leave them in DRAFT, where unrelease 4xxes); the deletes are not.
+ */
+async function teardownBackendResources(
+  deps: InstallDeps,
+  datasetId: string | null,
+  resources: ProvisionedResources | undefined,
+): Promise<void> {
+  if (datasetId !== null) {
+    const live = await deps.client.getDataset(datasetId);
+    if (live !== null) {
+      let state = readDatasetState(live);
 
-    if (state.backendStatus === "AVAILABLE" || state.pendingSagaType !== null) {
-      // AVAILABLE→DRAFT; this tears down the provisioned infrastructure via its own
-      // async saga — wait for it before deleting anything underneath.
-      await d.client.unreleaseDataset(datasetId);
-      await awaitSagaOutcome(d, datasetId);
-    } else if (state.backendStatus === "READY") {
-      await d.client.unstageDataset(datasetId);
+      // A saga in flight guards the dataset with 409s — wait for it to settle,
+      // then re-read; the TRUE status decides the branch (a compensated CREATE
+      // saga ends at READY, which needs unstage, not unrelease).
+      if (state.pendingSagaType !== null) {
+        await awaitSagaOutcome(deps, datasetId);
+        state = readDatasetState(await deps.client.getDataset(datasetId));
+      }
+
+      if (state.backendStatus === "AVAILABLE") {
+        // Tears down the provisioned infrastructure via the async DELETE saga.
+        // On success the dataset lands on READY (NOT DRAFT — verified in
+        // DataSetService.handleSagaCompleted), and the nested deletes below
+        // require a DRAFT parent — so use the saga outcome and unstage.
+        await deps.client.unreleaseDataset(datasetId);
+        const { status } = await awaitSagaOutcome(deps, datasetId);
+        if (status === "PROVISIONING") {
+          // Poll timeout: deleting while the teardown saga still runs would only
+          // produce 400/409s — stop cleanly and let the caller retry later.
+          throw new PortalBackendError(
+            "The dataset's teardown saga is still in progress — retry the uninstall shortly.",
+            503,
+          );
+        }
+        if (status === "READY") {
+          await deps.client.unstageDataset(datasetId);
+        }
+      } else if (state.backendStatus === "READY") {
+        await deps.client.unstageDataset(datasetId);
+      }
+
+      if (resources?.pipelineId) await deps.client.deletePipeline(datasetId, resources.pipelineId);
+      if (resources?.dataSinkId) await deps.client.deleteDatasink(datasetId, resources.dataSinkId);
+      await deps.client.deleteDataset(datasetId);
     }
-
-    if (resources?.pipelineId) await d.client.deletePipeline(datasetId, resources.pipelineId);
-    if (resources?.dataSinkId) await d.client.deleteDatasink(datasetId, resources.dataSinkId);
-    await d.client.deleteDataset(datasetId);
   }
 
   // Below-dataset resources exist independently of the dataset row, so clean them
-  // up even when the dataset itself was already gone.
+  // up even when the dataset itself was never created / is already gone.
   if (resources?.dataSourceId) {
-    await d.client.unreleaseDatasource(resources.dataSourceId).catch(() => undefined);
-    await d.client.deleteDatasource(resources.dataSourceId);
+    await deps.client.unreleaseDatasource(resources.dataSourceId).catch(() => undefined);
+    await deps.client.deleteDatasource(resources.dataSourceId);
   }
   for (const structure of resources?.dataStructures ?? []) {
-    await d.client.unreleaseDatastructure(structure.id).catch(() => undefined);
-    await d.client.deleteDatastructure(structure.id);
+    await deps.client.unreleaseDatastructure(structure.id).catch(() => undefined);
+    await deps.client.deleteDatastructure(structure.id);
   }
-
-  await d.store.remove(useCaseId);
-  return true;
 }
 
 /**

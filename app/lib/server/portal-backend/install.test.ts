@@ -98,6 +98,8 @@ interface MockConfig {
   releaseStatus: number;
   /** Successive GET /datasets/{id} responses (poll simulation); last one repeats. */
   datasetStates: DatasetStateResponse[];
+  /** Make one endpoint fail with 500 (mid-install failure simulation). */
+  failOn?: { method: string; pathPattern: RegExp };
 }
 
 let server: Server;
@@ -130,6 +132,10 @@ function handle(req: IncomingMessage, res: ServerResponse, body: string): void {
     res.writeHead(code, payload ? { "Content-Type": "application/json" } : undefined);
     res.end(payload ? JSON.stringify(payload) : undefined);
   };
+
+  if (config.failOn && method === config.failOn.method && config.failOn.pathPattern.test(path)) {
+    return status(500, { detail: "injected failure" });
+  }
 
   if (method === "POST") {
     if (path === "/datastructures") return created(`/datastructures/${nextId("ds")}`);
@@ -249,6 +255,14 @@ describe("portal-backend install orchestrator", () => {
     assert.deepEqual(pipelineBody.dataSourceIds, ["src-5"]);
     assert.ok(Array.isArray(pipelineBody.dataSinkIds) && (pipelineBody.dataSinkIds as string[]).length === 1);
 
+    // datasource + FROST sink wire to the LAST element's version (bundle refs are
+    // in dependency order — the top-level record comes last), here v-4
+    const datasourceRequest = requests.find((r) => r.method === "POST" && r.path === "/datasources");
+    assert.equal((datasourceRequest?.body as Record<string, unknown>).dataStructureVersionId, "v-4");
+    const datasinkRequest = requests.find((r) => r.method === "POST" && r.path.endsWith("/datasinks"));
+    const datasinkBody = datasinkRequest?.body as { configuration?: { dataStructureVersionId?: string } };
+    assert.equal(datasinkBody.configuration?.dataStructureVersionId, "v-4");
+
     // the record persists everything uninstall needs
     assert.equal(record.source, "portal-backend");
     assert.match(record.id, /^set-/);
@@ -336,10 +350,10 @@ describe("portal-backend install orchestrator", () => {
     );
   });
 
-  test("uninstall of an AVAILABLE install: unrelease (await teardown saga), then the bottom-up delete cascade", async () => {
+  test("uninstall of an AVAILABLE install: unrelease → teardown saga lands on READY → unstage → delete cascade", async () => {
     config.datasetStates = [
       { dataSetStatus: "AVAILABLE", pendingSagaType: null }, // initial state read
-      { dataSetStatus: "DRAFT", pendingSagaType: null }, // after the teardown saga
+      { dataSetStatus: "READY", pendingSagaType: null }, // DELETE saga success ends on READY (not DRAFT)
     ];
     const store = new InMemoryInstallStore([seedRecord({ id: "set-42" })]);
 
@@ -350,7 +364,8 @@ describe("portal-backend install orchestrator", () => {
     assert.deepEqual(sequence, [
       "GET /datasets/set-42",
       "POST /datasets/set-42/unrelease",
-      "GET /datasets/set-42", // saga poll
+      "GET /datasets/set-42", // saga poll → READY
+      "POST /datasets/set-42/unstage", // READY → DRAFT, or the nested deletes 400
       "DELETE /datasets/set-42/pipelines/pipe-1",
       "DELETE /datasets/set-42/datasinks/sink-1",
       "DELETE /datasets/set-42",
@@ -362,6 +377,22 @@ describe("portal-backend install orchestrator", () => {
       "DELETE /datastructures/ds-2",
     ]);
     assert.equal(await store.get(USE_CASE.id), null);
+  });
+
+  test("uninstall aborts cleanly (record kept) when the teardown saga never settles", async () => {
+    config.datasetStates = [
+      { dataSetStatus: "AVAILABLE", pendingSagaType: null },
+      { dataSetStatus: "AVAILABLE", pendingSagaType: "DELETE" }, // saga runs forever
+    ];
+    const store = new InMemoryInstallStore([seedRecord({ id: "set-slow" })]);
+
+    await assert.rejects(
+      () => uninstallUseCase(USE_CASE.id, makeDeps(store)),
+      /teardown saga is still in progress/,
+    );
+    const sequence = requests.map((r) => `${r.method} ${r.path}`);
+    assert.ok(!sequence.some((s) => s.startsWith("DELETE ")), "no deletes while the saga runs");
+    assert.ok(await store.get(USE_CASE.id), "record kept for the retry");
   });
 
   test("uninstall of a READY install unstages (no unrelease) before deleting", async () => {
@@ -422,5 +453,48 @@ describe("portal-backend install orchestrator", () => {
 
     assert.equal(removed, false);
     assert.equal(requests.length, 0);
+  });
+
+  test("mid-install failure rolls back everything created so far, then rethrows", async () => {
+    // Fail the datasource create: at that point two datastructures (with released
+    // versions) already exist on the backend and MUST NOT be stranded.
+    config.failOn = { method: "POST", pathPattern: /^\/datasources$/ };
+    const store = new InMemoryInstallStore();
+
+    await assert.rejects(() => installUseCase(USE_CASE, makeDeps(store)));
+
+    const sequence = requests.map((r) => `${r.method} ${r.path}`);
+    // rollback deletes both created datastructures (unrelease is best-effort first)
+    assert.ok(sequence.includes("POST /datastructures/ds-1/unrelease"));
+    assert.ok(sequence.includes("DELETE /datastructures/ds-1"));
+    assert.ok(sequence.includes("POST /datastructures/ds-3/unrelease"));
+    assert.ok(sequence.includes("DELETE /datastructures/ds-3"));
+    // no dataset was ever created, so nothing dataset-scoped is touched
+    assert.ok(!sequence.some((s) => s.startsWith("GET /datasets/")));
+    // nothing was recorded — the next attempt starts clean
+    assert.equal(await store.get(USE_CASE.id), null);
+  });
+
+  test("uninstall with a saga in flight WAITS for it, then branches on the true status", async () => {
+    // Initial read: optimistic AVAILABLE while a CREATE saga still runs. The saga
+    // then compensates → true outcome READY, which needs unstage (NOT unrelease —
+    // that would hit the backend's 409 saga guard).
+    config.datasetStates = [
+      { dataSetStatus: "AVAILABLE", pendingSagaType: "CREATE" },
+      { dataSetStatus: "READY", pendingSagaType: null },
+    ];
+    const store = new InMemoryInstallStore([seedRecord({ id: "set-9" })]);
+
+    const removed = await uninstallUseCase(USE_CASE.id, makeDeps(store));
+
+    assert.equal(removed, true);
+    const sequence = requests.map((r) => `${r.method} ${r.path}`);
+    assert.ok(!sequence.includes("POST /datasets/set-9/unrelease"), "no unrelease during/after a compensated saga");
+    assert.ok(sequence.includes("POST /datasets/set-9/unstage"), "unstages the compensated (READY) dataset");
+    assert.ok(
+      sequence.filter((s) => s === "GET /datasets/set-9").length >= 2,
+      "polled the saga before acting",
+    );
+    assert.equal(await store.get(USE_CASE.id), null);
   });
 });

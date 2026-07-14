@@ -282,7 +282,12 @@ export class PortalBackendClient {
     throw await this.responseError(response, `Portal-backend POST /datasets/${dataSetId}/release`);
   }
 
-  /** `POST /datasets/{id}/unrelease` → AVAILABLE→DRAFT, tears down infrastructure. Returns status. */
+  /**
+   * `POST /datasets/{id}/unrelease` — starts the async DELETE (teardown) saga for
+   * the provisioned infrastructure. On saga success the dataset lands on **READY**
+   * (not DRAFT — `DataSetService.handleSagaCompleted`); it still needs `unstage`
+   * before nested resources or the dataset itself can be deleted. Returns status.
+   */
   async unreleaseDataset(dataSetId: string): Promise<number> {
     return this.postTransition(`/datasets/${encodeURIComponent(dataSetId)}/unrelease`, "unrelease");
   }

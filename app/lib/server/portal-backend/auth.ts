@@ -174,6 +174,25 @@ export function createAuthHeaderProvider(): PortalBackendAuthHeaderProvider {
   const username = process.env.PORTAL_BACKEND_KEYCLOAK_USERNAME?.trim();
   const password = process.env.PORTAL_BACKEND_KEYCLOAK_PASSWORD?.trim();
 
+  // A partially configured Keycloak block must fail loudly: silently falling back
+  // to the stub guarantees 401s whose error message points at scope ids, sending
+  // the operator down the wrong path.
+  const configured = { keycloakUrl, username, password };
+  const present = Object.values(configured).filter(Boolean).length;
+  if (present > 0 && present < 3) {
+    const missing = Object.entries({
+      PORTAL_BACKEND_KEYCLOAK_URL: keycloakUrl,
+      PORTAL_BACKEND_KEYCLOAK_USERNAME: username,
+      PORTAL_BACKEND_KEYCLOAK_PASSWORD: password,
+    })
+      .filter(([, value]) => !value)
+      .map(([name]) => name);
+    throw new PortalBackendError(
+      `Keycloak auth is partially configured — missing ${missing.join(", ")}. Set all of them, or none (stub mode).`,
+      503,
+    );
+  }
+
   if (keycloakUrl && username && password) {
     return new KeycloakPasswordGrantAuthProvider({
       keycloakUrl,

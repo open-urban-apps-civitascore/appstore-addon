@@ -153,9 +153,10 @@ export function toDatasinkBody(dataStructureVersionId: string): Record<string, u
 }
 
 /**
- * `POST /datasets/{id}/pipelines` body. Shape verified 2026-07-14
- * (`dataSourceIds` + `dataSinkIds`, both must reference AVAILABLE resources; the
- * datasink must therefore be created BEFORE the pipeline).
+ * `POST /datasets/{id}/pipelines` body. Shape verified 2026-07-14:
+ * `dataSourceIds` must reference AVAILABLE (released) datasources; datasinks have
+ * NO release lifecycle — the sink merely has to be created before the pipeline so
+ * its id exists for `dataSinkIds`.
  *
  * `model` is the NiFi flow graph the config-adapter deploys (roles
  * SOURCE/TRANSFORM/SINK, edges, optional cron trigger — see FlowPath.derive).
