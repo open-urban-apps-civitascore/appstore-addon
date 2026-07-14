@@ -65,6 +65,15 @@ function seedRecord(overrides: Partial<InstalledUseCase> = {}): InstalledUseCase
     },
     createdDataStructures: [{ name: "TreeRecord", version: "1.0.0" }],
     datasetRef: { datasetId: DATASET_URN },
+    provisionedResources: {
+      dataStructures: [
+        { id: "ds-1", versionId: "v-1", name: "TreeRecord", version: "1.0.0" },
+        { id: "ds-2", versionId: "v-2", name: "TreeSpecies", version: "1.0.0" },
+      ],
+      dataSourceId: "src-1",
+      dataSinkId: "sink-1",
+      pipelineId: "pipe-1",
+    },
     ...overrides,
   };
 }
@@ -78,11 +87,17 @@ interface RecordedRequest {
   body: unknown;
 }
 
+/** One `GET /datasets/{id}` response; the last entry repeats forever. */
+interface DatasetStateResponse {
+  dataSetStatus: string;
+  pendingSagaType: string | null;
+}
+
 interface MockConfig {
   /** Status returned by POST /datasets/{id}/release (202 accepted, 409 in-flight). */
   releaseStatus: number;
-  /** Lifecycle status reported by GET /datasets/{id}. */
-  datasetStatus: string;
+  /** Successive GET /datasets/{id} responses (poll simulation); last one repeats. */
+  datasetStates: DatasetStateResponse[];
 }
 
 let server: Server;
@@ -90,6 +105,7 @@ let baseUrl: string;
 let requests: RecordedRequest[];
 let config: MockConfig;
 let counter: number;
+let getDatasetCalls: number;
 
 function nextId(prefix: string): string {
   counter += 1;
@@ -119,19 +135,25 @@ function handle(req: IncomingMessage, res: ServerResponse, body: string): void {
     if (path === "/datastructures") return created(`/datastructures/${nextId("ds")}`);
     if (/^\/datastructures\/[^/]+\/versions$/.test(path)) return created(`${path}/${nextId("v")}`);
     if (/^\/datastructures\/[^/]+\/versions\/[^/]+\/release$/.test(path)) return status(200);
+    if (/^\/datastructures\/[^/]+\/(release|unrelease)$/.test(path)) return status(200);
     if (path === "/datasources") return created(`/datasources/${nextId("src")}`);
+    if (/^\/datasources\/[^/]+\/(release|unrelease)$/.test(path)) return status(200);
     if (path === "/datasets") return created(`/datasets/${nextId("set")}`);
     if (/^\/datasets\/[^/]+\/pipelines$/.test(path)) return created(`${path}/${nextId("pipe")}`);
     if (/^\/datasets\/[^/]+\/datasinks$/.test(path)) return created(`${path}/${nextId("sink")}`);
     if (/^\/datasets\/[^/]+\/stage$/.test(path)) return status(200);
+    if (/^\/datasets\/[^/]+\/unstage$/.test(path)) return status(200);
     if (/^\/datasets\/[^/]+\/release$/.test(path)) return status(config.releaseStatus);
     if (/^\/datasets\/[^/]+\/unrelease$/.test(path)) return status(202);
     return status(404);
   }
   if (method === "GET" && /^\/datasets\/[^/]+$/.test(path)) {
-    return status(200, { id: path.split("/").at(-1), status: config.datasetStatus });
+    const state =
+      config.datasetStates[Math.min(getDatasetCalls, config.datasetStates.length - 1)];
+    getDatasetCalls += 1;
+    return status(200, { id: path.split("/").at(-1), ...state });
   }
-  if (method === "DELETE" && /^\/datasets\/[^/]+$/.test(path)) return status(204);
+  if (method === "DELETE") return status(204);
   return status(404);
 }
 
@@ -147,6 +169,7 @@ function makeDeps(store: InMemoryInstallStore): InstallDeps {
     store,
     fetchBundle: async () => BUNDLE,
     now: () => new Date("2020-01-02T03:04:05.000Z"),
+    poll: { intervalMs: 1, timeoutMs: 50 },
   };
 }
 
@@ -175,50 +198,65 @@ describe("portal-backend install orchestrator", () => {
   beforeEach(() => {
     requests = [];
     counter = 0;
-    config = { releaseStatus: 202, datasetStatus: "AVAILABLE" };
+    getDatasetCalls = 0;
+    config = {
+      releaseStatus: 202,
+      datasetStates: [{ dataSetStatus: "AVAILABLE", pendingSagaType: null }],
+    };
   });
 
-  test("drives the full call sequence in the contract's required order", async () => {
+  test("drives the verified release-cascade sequence in order", async () => {
     const store = new InMemoryInstallStore();
     const { record, created } = await installUseCase(USE_CASE, makeDeps(store));
 
     assert.equal(created, true);
 
     const posts = postPaths();
-    const firstDatastructure = posts.indexOf("/datastructures");
-    const datasource = posts.indexOf("/datasources");
-    const dataset = posts.indexOf("/datasets");
-    const pipeline = posts.findIndex((p) => p.endsWith("/pipelines"));
-    const datasink = posts.findIndex((p) => p.endsWith("/datasinks"));
-    const stage = posts.findIndex((p) => p.endsWith("/stage"));
-    const release = posts.findIndex((p) => /^\/datasets\/[^/]+\/release$/.test(p));
+    const index = (predicate: (p: string) => boolean) => posts.findIndex(predicate);
 
-    // datastructure → datasource → dataset → pipeline/datasink → stage → release
-    assert.ok(firstDatastructure >= 0, "a datastructure was created");
-    assert.ok(firstDatastructure < datasource, "datastructure before datasource");
-    assert.ok(datasource < dataset, "datasource before dataset");
-    assert.ok(dataset < pipeline, "dataset before pipeline");
-    assert.ok(pipeline < datasink, "pipeline before datasink");
-    assert.ok(datasink < stage, "datasink before stage");
-    assert.ok(stage < release, "stage before release");
+    const firstStructure = index((p) => p === "/datastructures");
+    const structureRelease = index((p) => /^\/datastructures\/[^/]+\/release$/.test(p));
+    const versionRelease = index((p) => /\/versions\/[^/]+\/release$/.test(p));
+    const datasource = index((p) => p === "/datasources");
+    const datasourceRelease = index((p) => /^\/datasources\/[^/]+\/release$/.test(p));
+    const dataset = index((p) => p === "/datasets");
+    const datasink = index((p) => p.endsWith("/datasinks"));
+    const pipeline = index((p) => p.endsWith("/pipelines"));
+    const stage = index((p) => p.endsWith("/stage"));
+    const release = index((p) => /^\/datasets\/[^/]+\/release$/.test(p));
 
-    // one create per bundle datastructure (2), each with a version + version release
+    // create → release per level, then the dataset aggregate, sink BEFORE pipeline
+    assert.ok(firstStructure >= 0, "a datastructure was created");
+    assert.ok(versionRelease > firstStructure, "version released after create");
+    assert.ok(structureRelease > versionRelease, "structure released after its version");
+    assert.ok(datasource > structureRelease, "datasource only after the structure is AVAILABLE");
+    assert.ok(datasourceRelease > datasource, "datasource released after create");
+    assert.ok(dataset > datasourceRelease, "dataset after the datasource is AVAILABLE");
+    assert.ok(datasink > dataset, "datasink under the dataset");
+    assert.ok(pipeline > datasink, "datasink BEFORE pipeline (the pipeline links it)");
+    assert.ok(stage > pipeline, "stage after wiring");
+    assert.ok(release > stage, "release last");
+
+    // one create per bundle datastructure (2), each with version + both releases
     assert.equal(posts.filter((p) => p === "/datastructures").length, 2);
     assert.equal(posts.filter((p) => /\/versions$/.test(p)).length, 2);
     assert.equal(posts.filter((p) => /\/versions\/[^/]+\/release$/.test(p)).length, 2);
+    assert.equal(posts.filter((p) => /^\/datastructures\/[^/]+\/release$/.test(p)).length, 2);
 
-    // pipeline + datasink are nested under the created dataset
-    assert.ok(posts.some((p) => new RegExp(`^/datasets/${record.id}/pipelines$`).test(p)));
-    assert.ok(posts.some((p) => new RegExp(`^/datasets/${record.id}/datasinks$`).test(p)));
+    // the pipeline body links the created datasource + datasink by id
+    const pipelineRequest = requests.find((r) => r.method === "POST" && r.path.endsWith("/pipelines"));
+    const pipelineBody = pipelineRequest?.body as Record<string, unknown>;
+    assert.deepEqual(pipelineBody.dataSourceIds, ["src-5"]);
+    assert.ok(Array.isArray(pipelineBody.dataSinkIds) && (pipelineBody.dataSinkIds as string[]).length === 1);
 
-    // the record is persisted and marked as a portal-backend install
+    // the record persists everything uninstall needs
     assert.equal(record.source, "portal-backend");
     assert.match(record.id, /^set-/);
+    assert.equal(record.provisionedResources?.dataStructures.length, 2);
+    assert.ok(record.provisionedResources?.dataSourceId);
+    assert.ok(record.provisionedResources?.dataSinkId);
+    assert.ok(record.provisionedResources?.pipelineId);
     assert.equal((await store.get(USE_CASE.id))?.id, record.id);
-    assert.deepEqual(
-      record.createdDataStructures.map((d) => d.name),
-      ["TreeRecord", "TreeSpecies"],
-    );
   });
 
   test("attaches the gateway auth headers to every request", async () => {
@@ -232,21 +270,37 @@ describe("portal-backend install orchestrator", () => {
     }
   });
 
-  test("handles 202 (async release): reports AVAILABLE once the saga has finished", async () => {
-    config.releaseStatus = 202;
-    config.datasetStatus = "AVAILABLE";
+  test("saga success: polls past the in-flight state, reports AVAILABLE", async () => {
+    config.datasetStates = [
+      { dataSetStatus: "AVAILABLE", pendingSagaType: "CREATE" }, // optimistic, saga running
+      { dataSetStatus: "AVAILABLE", pendingSagaType: null }, // saga finished
+    ];
     const { record } = await installUseCase(USE_CASE, makeDeps(new InMemoryInstallStore()));
 
-    const releaseStep = record.provisioningTrace?.steps.find((s) =>
-      /\/datasets\/[^/]+\/release$/.test(s.path),
-    );
-    assert.equal(releaseStep?.status, 202);
     assert.equal(record.status, "AVAILABLE");
+    assert.ok(getDatasetCalls >= 2, "kept polling while the saga was in flight");
+    assert.ok(
+      record.provisioningTrace?.steps.some((s) => s.label.includes("saga succeeded")),
+      "trace records the saga outcome",
+    );
   });
 
-  test("handles 202 (async release): reports PROVISIONING while the saga is still running", async () => {
-    config.releaseStatus = 202;
-    config.datasetStatus = "RELEASING";
+  test("saga failure: the optimistic AVAILABLE is not trusted — reports READY after compensation", async () => {
+    config.datasetStates = [
+      { dataSetStatus: "AVAILABLE", pendingSagaType: "CREATE" }, // the lie we saw live
+      { dataSetStatus: "READY", pendingSagaType: null }, // compensated outcome
+    ];
+    const { record } = await installUseCase(USE_CASE, makeDeps(new InMemoryInstallStore()));
+
+    assert.equal(record.status, "READY");
+    assert.ok(
+      record.provisioningTrace?.steps.some((s) => s.label.includes("saga failed")),
+      "trace records the compensation",
+    );
+  });
+
+  test("poll timeout: reports PROVISIONING when the saga never settles", async () => {
+    config.datasetStates = [{ dataSetStatus: "READY", pendingSagaType: "CREATE" }];
     const { record } = await installUseCase(USE_CASE, makeDeps(new InMemoryInstallStore()));
 
     assert.equal(record.status, "PROVISIONING");
@@ -254,7 +308,7 @@ describe("portal-backend install orchestrator", () => {
 
   test("handles 409 (saga already in flight) idempotently, without throwing", async () => {
     config.releaseStatus = 409;
-    config.datasetStatus = "RELEASING";
+    config.datasetStates = [{ dataSetStatus: "READY", pendingSagaType: "CREATE" }];
     const store = new InMemoryInstallStore();
 
     const { record, created } = await installUseCase(USE_CASE, makeDeps(store));
@@ -275,17 +329,18 @@ describe("portal-backend install orchestrator", () => {
 
     assert.equal(created, false);
     assert.equal(record.id, "set-existing");
-    // no new dataset was created
     assert.equal(postPaths().filter((p) => p === "/datasets").length, 0);
-    // it only checked the existing dataset's live status
     assert.deepEqual(
       requests.map((r) => `${r.method} ${r.path}`),
       ["GET /datasets/set-existing"],
     );
   });
 
-  test("uninstall unreleases (tears down infra) then deletes, and drops the record", async () => {
-    config.datasetStatus = "AVAILABLE";
+  test("uninstall of an AVAILABLE install: unrelease (await teardown saga), then the bottom-up delete cascade", async () => {
+    config.datasetStates = [
+      { dataSetStatus: "AVAILABLE", pendingSagaType: null }, // initial state read
+      { dataSetStatus: "DRAFT", pendingSagaType: null }, // after the teardown saga
+    ];
     const store = new InMemoryInstallStore([seedRecord({ id: "set-42" })]);
 
     const removed = await uninstallUseCase(USE_CASE.id, makeDeps(store));
@@ -295,27 +350,69 @@ describe("portal-backend install orchestrator", () => {
     assert.deepEqual(sequence, [
       "GET /datasets/set-42",
       "POST /datasets/set-42/unrelease",
+      "GET /datasets/set-42", // saga poll
+      "DELETE /datasets/set-42/pipelines/pipe-1",
+      "DELETE /datasets/set-42/datasinks/sink-1",
       "DELETE /datasets/set-42",
+      "POST /datasources/src-1/unrelease",
+      "DELETE /datasources/src-1",
+      "POST /datastructures/ds-1/unrelease",
+      "DELETE /datastructures/ds-1",
+      "POST /datastructures/ds-2/unrelease",
+      "DELETE /datastructures/ds-2",
     ]);
-    // unrelease strictly precedes delete
-    assert.ok(
-      sequence.indexOf("POST /datasets/set-42/unrelease") <
-        sequence.indexOf("DELETE /datasets/set-42"),
-    );
     assert.equal(await store.get(USE_CASE.id), null);
   });
 
-  test("uninstall of a DRAFT dataset deletes directly (no unrelease)", async () => {
-    config.datasetStatus = "DRAFT";
-    const store = new InMemoryInstallStore([seedRecord({ id: "set-7", status: "DRAFT" })]);
+  test("uninstall of a READY install unstages (no unrelease) before deleting", async () => {
+    config.datasetStates = [{ dataSetStatus: "READY", pendingSagaType: null }];
+    const store = new InMemoryInstallStore([seedRecord({ id: "set-7", status: "READY" })]);
+
+    const removed = await uninstallUseCase(USE_CASE.id, makeDeps(store));
+
+    assert.equal(removed, true);
+    const sequence = requests.map((r) => `${r.method} ${r.path}`);
+    assert.ok(sequence.includes("POST /datasets/set-7/unstage"));
+    assert.ok(!sequence.some((s) => s.includes("/unrelease") && s.includes("/datasets/")));
+    assert.ok(sequence.indexOf("POST /datasets/set-7/unstage") < sequence.indexOf("DELETE /datasets/set-7"));
+  });
+
+  test("uninstall without provisionedResources (legacy record) removes only the dataset", async () => {
+    config.datasetStates = [{ dataSetStatus: "DRAFT", pendingSagaType: null }];
+    const store = new InMemoryInstallStore([
+      seedRecord({ id: "set-legacy", status: "DRAFT", provisionedResources: undefined }),
+    ]);
 
     const removed = await uninstallUseCase(USE_CASE.id, makeDeps(store));
 
     assert.equal(removed, true);
     assert.deepEqual(
       requests.map((r) => `${r.method} ${r.path}`),
-      ["GET /datasets/set-7", "DELETE /datasets/set-7"],
+      ["GET /datasets/set-legacy", "DELETE /datasets/set-legacy"],
     );
+  });
+
+  test("uninstall still cleans up datasource + datastructures when the dataset is already gone", async () => {
+    // GET /datasets/{id} → 404 is modelled by the client returning null; simulate
+    // via a state the mock cannot produce — use a dedicated 404 path instead.
+    const store = new InMemoryInstallStore([seedRecord({ id: "missing" })]);
+    // Point the mock at 404 for this id by intercepting: the generic GET matcher
+    // always answers, so instead delete against a fresh server-side convention:
+    // the client treats 404 as "gone" — emulate by making GET return 404 once.
+    const deps = makeDeps(store);
+    const original = deps.client.getDataset.bind(deps.client);
+    deps.client.getDataset = async () => null;
+
+    const removed = await uninstallUseCase(USE_CASE.id, deps);
+
+    assert.equal(removed, true);
+    const sequence = requests.map((r) => `${r.method} ${r.path}`);
+    assert.ok(!sequence.some((s) => s.startsWith("DELETE /datasets/missing")), "no dataset delete");
+    assert.ok(sequence.includes("DELETE /datasources/src-1"));
+    assert.ok(sequence.includes("DELETE /datastructures/ds-1"));
+    assert.ok(sequence.includes("DELETE /datastructures/ds-2"));
+    assert.equal(await store.get(USE_CASE.id), null);
+    void original;
   });
 
   test("uninstall returns false and touches nothing when not installed", async () => {

@@ -105,6 +105,24 @@ export const provisioningTraceSchema = z.object({
   steps: z.array(provisioningStepSchema),
 });
 
+// Server-assigned ids of everything an install created on the portal-backend.
+// Persisted so uninstall can run the verified bottom-up delete cascade
+// (pipeline → datasink → dataset → datasource → datastructures) — references
+// block deletion hard (400/409), so each id must be removed individually.
+export const provisionedResourcesSchema = z.object({
+  dataStructures: z.array(
+    z.object({
+      id: z.string(),
+      versionId: z.string(),
+      name: z.string(),
+      version: z.string(),
+    }),
+  ),
+  dataSourceId: z.string().optional(),
+  dataSinkId: z.string().optional(),
+  pipelineId: z.string().optional(),
+});
+
 export const installedUseCaseSchema = z.object({
   id: z.string(),
   useCaseId: z.string(),
@@ -127,6 +145,9 @@ export const installedUseCaseSchema = z.object({
   // The use case's CORE dataset reference (URN), carried for display/traceability.
   datasetRef: datasetReferenceSchema,
   provisioningTrace: provisioningTraceSchema.optional(),
+  // Absent on records written before the delete-cascade support; uninstall then
+  // falls back to removing only the dataset.
+  provisionedResources: provisionedResourcesSchema.optional(),
 });
 
 export const installedUseCaseListSchema = z.array(installedUseCaseSchema);
@@ -139,6 +160,7 @@ export type DatasetReference = z.infer<typeof datasetReferenceSchema>;
 export type DatasetLifecycleStatus = z.infer<typeof datasetLifecycleStatusSchema>;
 export type ProvisioningStep = z.infer<typeof provisioningStepSchema>;
 export type ProvisioningTrace = z.infer<typeof provisioningTraceSchema>;
+export type ProvisionedResources = z.infer<typeof provisionedResourcesSchema>;
 
 export const INSTALLED_USE_CASE_SOURCE_LABELS: Record<InstalledUseCase["source"], string> = {
   "portal-backend": "Über das Portal-Backend bereitgestellt",

@@ -5,22 +5,30 @@ import type { DatasetLifecycleStatus, UseCase } from "@/types/use-cases";
 /**
  * CORE-IR → portal-backend payload mapper.
  *
- * ┌─────────────────────────────────────────────────────────────────────────────┐
- * │  THIS IS THE ONE MODULE THAT GUESSES portal-backend REQUEST-BODY FIELD NAMES. │
- * └─────────────────────────────────────────────────────────────────────────────┘
+ * Every request-body shape below was **verified live against a running
+ * CivitasCore v2 portal-backend on 2026-07-14** (see the meta-repo spike doc
+ * `2026-07-13-portal-backend-install-spike.md`, "Update (2026-07-14)"), replacing
+ * the earlier guesses. Key facts baked in here:
  *
- * We have the platform's *contract* (endpoints, ordering, lifecycle, headers) but
- * NOT its OpenAPI spec or a live instance, so the exact DTO field names below are
- * assumptions. Every guessed field is tagged `TODO(confirm): field names vs live
- * OpenAPI`. Keep all such guesses here — do not scatter them across the client or
- * orchestrator — so confirming them against the real spec is a single-file change.
+ *  - a DataStructure carries no URN/title fields; the JSON Schema goes on the
+ *    *version* as `model` (+ `dataStructureVersionSource: "OWN"`);
+ *  - `createdFromDataSource: false` must be sent explicitly — omitting it lets the
+ *    DTO's null overwrite the entity default and the insert dies with a DB
+ *    NOT_NULL violation (400), although OpenAPI does not mark it required;
+ *  - the DataSet does NOT reference datastructures; the graph is wired via
+ *    `DataSource.dataStructureVersionId`, `Pipeline.dataSourceIds/dataSinkIds`
+ *    and the FROST sink's `configuration.dataStructureVersionId`;
+ *  - datasource `configuration` (MQTT) = `urls[]`, `topics[]`, `qos` — strictly
+ *    validated only in the backend's OnRelease group;
+ *  - a dataset needs a non-blank `description`, or `stage` rejects it.
  *
  * Source of truth = the use case's CORE-IR bundle (`fetchUseCaseBundle`): a dataset
  * manifest plus one JSON Schema per datastructure element. The bundle does not
- * (yet) carry datasource / pipeline / datasink specs, so those are synthesized as
- * clearly-marked placeholders — a provisionable use case needs them, and the whole
- * point is to exercise the full install sequence. Real content should come from an
- * extended CORE-IR bundle (see follow-ups).
+ * (yet) carry a datasource config or a pipeline flow graph, so those are
+ * synthesized as clearly-marked placeholders (`TODO(content)`). Consequence: the
+ * release saga's NiFi step rejects the empty pipeline `model` ("pipeline graph has
+ * no datasource node") and compensates — the install lands on READY, not
+ * AVAILABLE, until real content arrives in the bundle.
  */
 
 /** Connector types the portal-backend's datasource endpoint accepts. */
@@ -37,21 +45,14 @@ export interface DatastructurePlanItem {
   versionBody: Record<string, unknown>;
 }
 
+/**
+ * The static part of the install plan. Only the datastructure bodies can be built
+ * up front: datasource, datasink and pipeline all reference **server-assigned ids**
+ * (the released version id, the datasource/datasink ids), so the orchestrator
+ * builds those bodies mid-sequence with the ids it has just received.
+ */
 export interface PortalBackendInstallPlan {
   datastructures: DatastructurePlanItem[];
-  /** CORE URNs of the datastructures, in order (first is the pipeline target). */
-  datastructureRefs: string[];
-  /** Body for `POST /datasources`. */
-  datasource: Record<string, unknown>;
-  /** Body for `POST /datasets` (created in DRAFT). */
-  dataset: Record<string, unknown>;
-  /** Body for `POST /datasets/{id}/datasinks`. */
-  datasink: Record<string, unknown>;
-  /**
-   * The pipeline body ({@link toPipelineBody}) is NOT part of the static plan: it
-   * references the datasource's server-assigned id, which only exists once the
-   * datasource has been created, so the orchestrator builds it mid-sequence.
-   */
   /** Non-wire summary reused by the install store / UI. */
   summary: {
     datasetTitle: string;
@@ -60,101 +61,125 @@ export interface PortalBackendInstallPlan {
   };
 }
 
-/** `POST /datastructures` body for one CORE-IR element. */
-export function toDatastructureCreateBody(element: UseCaseBundle["elements"][number]): Record<string, unknown> {
+/** `POST /datastructures` body for one CORE-IR element. [verified 2026-07-14] */
+export function toDatastructureCreateBody(
+  element: UseCaseBundle["elements"][number],
+): Record<string, unknown> {
   const { name } = parseUrn(element.ref);
-  const title = typeof element.schema.title === "string" ? element.schema.title : name;
-  // TODO(confirm): field names vs live OpenAPI — a datastructure "shell" carrying
-  // its CORE URN + human title; the schema itself goes on the version below.
   return {
     name,
-    urn: element.ref,
-    title,
-  };
-}
-
-/** `POST /datastructures/{id}/versions` body carrying the JSON Schema. */
-export function toDatastructureVersionBody(element: UseCaseBundle["elements"][number]): Record<string, unknown> {
-  const { version } = parseUrn(element.ref);
-  // TODO(confirm): field names vs live OpenAPI — a version bundles the JSON Schema
-  // and a semantic version label; whether the schema is `schema`, `jsonSchema` or
-  // an inline document is unconfirmed.
-  return {
-    version,
-    schema: element.schema,
+    description: `Installed by the marketplace from ${element.ref}`,
+    // Explicit — omitting it triggers a DB NOT_NULL violation (see module docs).
+    createdFromDataSource: false,
   };
 }
 
 /**
- * `POST /datasources` body — a PLACEHOLDER connector. The CORE-IR bundle does not
- * carry connection details (or secrets) yet, so this is a stand-in MQTT source.
+ * `POST /datastructures/{id}/versions` body carrying the JSON Schema.
+ * [verified 2026-07-14]
+ *
+ * The bundle's `$id` (its CORE URN) is STRIPPED from the model: on version
+ * release the backend validates that a present `$id` derives from the
+ * server-assigned DataStructure UUID (`DataStructureVersionService.validateModelId`
+ * / `CoreUrn.matchesId`) — a bundle URN can never satisfy that, since the UUID
+ * only exists after the create. `$id` is optional, so omitting it skips the
+ * check; the bundle URN stays recorded on the install (`provisionedResources`
+ * name/version + the catalog ref).
  */
-export function toDatasourceBody(useCase: UseCase, bundle: UseCaseBundle): Record<string, unknown> {
-  // TODO(confirm): field names vs live OpenAPI — connector type discriminator and
-  // the shape of `config` (which in the real world also carries secrets).
-  // TODO(content): real datasource spec should come from an extended CORE-IR bundle.
+export function toDatastructureVersionBody(
+  element: UseCaseBundle["elements"][number],
+): Record<string, unknown> {
+  const { name, version } = parseUrn(element.ref);
+  const { $id: _bundleUrn, ...model } = element.schema;
+  return {
+    dataStructureVersionSource: "OWN",
+    version,
+    modelName: name,
+    model,
+  };
+}
+
+/**
+ * `POST /datasources` body. Shape verified 2026-07-14; the *values* are a
+ * placeholder MQTT connector because the CORE-IR bundle carries no connection
+ * details yet. The linked datastructure version must already be AVAILABLE
+ * (released), and so must its parent datastructure — the backend rejects the
+ * create otherwise.
+ */
+export function toDatasourceBody(
+  useCase: UseCase,
+  bundle: UseCaseBundle,
+  dataStructureVersionId: string,
+): Record<string, unknown> {
+  // TODO(content): real connection details (and their secret parameters) must come
+  // from an extended CORE-IR bundle — this stand-in points at the local FROST
+  // broker so the config passes the backend's OnRelease validation.
   const connectorType: DatasourceConnectorType = "MQTT";
   return {
     name: `${bundle.dataset.title} – Source`,
+    description: `Installed by the marketplace for ${useCase.id}`,
     connectorType,
-    config: {
-      // Placeholder connection details — replace with the use case's real source.
-      host: "mqtt://localhost:1883",
-      topic: `civitas/${useCase.id}`,
+    configuration: {
+      urls: ["tcp://civitas-frost:1883"],
+      topics: [`civitas/${useCase.id}`],
+      qos: 1,
     },
-  };
-}
-
-/** `POST /datasets` body (creates the DRAFT). References the datastructures by URN. */
-export function toDatasetBody(bundle: UseCaseBundle, datastructureRefs: string[]): Record<string, unknown> {
-  // TODO(confirm): field names vs live OpenAPI — dataset title/description/version
-  // and how datastructures are referenced (`datastructureRefs` of URNs vs created ids).
-  return {
-    name: bundle.dataset.title,
-    description: bundle.dataset.description ?? "",
-    version: bundle.dataset.version ?? "1.0.0",
-    datastructureRefs,
+    dataStructureVersionId,
   };
 }
 
 /**
- * `POST /datasets/{id}/pipelines` body — a PLACEHOLDER pipeline wiring the
- * datasource to the first datastructure. Real pipeline steps should come from the
- * CORE-IR bundle.
+ * `POST /datasets` body (creates the DRAFT). [verified 2026-07-14]
+ * The dataset does NOT reference datastructures (that was a pre-spike guess); a
+ * non-blank description is REQUIRED or `stage` fails later.
+ */
+export function toDatasetBody(bundle: UseCaseBundle): Record<string, unknown> {
+  return {
+    name: bundle.dataset.title,
+    description: bundle.dataset.description?.trim() || bundle.dataset.title,
+    openDataAccess: false,
+  };
+}
+
+/**
+ * `POST /datasets/{id}/datasinks` body. [verified 2026-07-14]
+ * A FROST sink's whole configuration is the datastructure *version* it persists.
+ */
+export function toDatasinkBody(dataStructureVersionId: string): Record<string, unknown> {
+  return {
+    dataSinkType: "FROST",
+    configuration: { dataStructureVersionId },
+  };
+}
+
+/**
+ * `POST /datasets/{id}/pipelines` body. Shape verified 2026-07-14
+ * (`dataSourceIds` + `dataSinkIds`, both must reference AVAILABLE resources; the
+ * datasink must therefore be created BEFORE the pipeline).
+ *
+ * `model` is the NiFi flow graph the config-adapter deploys (roles
+ * SOURCE/TRANSFORM/SINK, edges, optional cron trigger — see FlowPath.derive).
+ * TODO(content): we send an empty graph until the CORE-IR bundle carries a real
+ * one, so the release saga's NiFi step fails ("pipeline graph has no datasource
+ * node") and compensates — expected until #3/#5 lands. Shortcut for the format:
+ * build one pipeline in the portal UI and GET it as a template.
  */
 export function toPipelineBody(
   bundle: UseCaseBundle,
-  datasourceRef: string,
-  datastructureRef: string | undefined,
+  dataSourceId: string,
+  dataSinkId: string,
 ): Record<string, unknown> {
-  // TODO(confirm): field names vs live OpenAPI — pipeline source/target references
-  // and the `steps` shape validated by `stage`.
-  // TODO(content): real pipeline definition should come from an extended CORE-IR bundle.
   return {
     name: `${bundle.dataset.title} – Pipeline`,
-    datasourceRef,
-    datastructureRef,
-    steps: [],
+    description: `Installed by the marketplace`,
+    model: {},
+    dataSourceIds: [dataSourceId],
+    dataSinkIds: [dataSinkId],
   };
 }
 
-/**
- * `POST /datasets/{id}/datasinks` body — a PLACEHOLDER sink. In CivitasCore the
- * dataset release provisions a FROST project; the concrete sink config is unknown
- * here.
- */
-export function toDatasinkBody(bundle: UseCaseBundle): Record<string, unknown> {
-  // TODO(confirm): field names vs live OpenAPI — sink type discriminator + config.
-  // TODO(content): real datasink definition should come from an extended CORE-IR bundle.
-  return {
-    name: `${bundle.dataset.title} – Sink`,
-    type: "FROST",
-    config: {},
-  };
-}
-
-/** Build the full ordered install plan from a use case and its CORE-IR bundle. */
-export function buildInstallPlan(useCase: UseCase, bundle: UseCaseBundle): PortalBackendInstallPlan {
+/** Build the static install plan from a use case's CORE-IR bundle. */
+export function buildInstallPlan(bundle: UseCaseBundle): PortalBackendInstallPlan {
   const datastructures: DatastructurePlanItem[] = bundle.elements.map((element) => {
     const { name, version } = parseUrn(element.ref);
     return {
@@ -166,50 +191,54 @@ export function buildInstallPlan(useCase: UseCase, bundle: UseCaseBundle): Porta
     };
   });
 
-  const datastructureRefs = datastructures.map((item) => item.ref);
-
   return {
     datastructures,
-    datastructureRefs,
-    datasource: toDatasourceBody(useCase, bundle),
-    dataset: toDatasetBody(bundle, datastructureRefs),
-    datasink: toDatasinkBody(bundle),
     summary: {
       datasetTitle: bundle.dataset.title,
-      datasetDescription: bundle.dataset.description ?? "",
+      datasetDescription: bundle.dataset.description?.trim() || bundle.dataset.title,
       dataStructures: datastructures.map(({ name, version }) => ({ name, version })),
     },
   };
 }
 
-/**
- * Map the portal-backend's dataset lifecycle state (read from `GET /datasets/{id}`)
- * onto the app's {@link DatasetLifecycleStatus}. The raw status *field name and
- * values* are assumed — another guess centralized here.
- */
-export function readLifecycleStatus(datasetBody: unknown): DatasetLifecycleStatus | null {
-  if (!datasetBody || typeof datasetBody !== "object") return null;
-  // TODO(confirm): field names vs live OpenAPI — the dataset's lifecycle field is
-  // assumed to be `status` (or `state`) carrying these tokens.
-  const record = datasetBody as Record<string, unknown>;
-  const raw = record.status ?? record.state ?? record.lifecycleStatus;
-  if (typeof raw !== "string") return null;
+/** What `GET /datasets/{id}` actually tells us about provisioning. */
+export interface DatasetState {
+  /** The backend's own lifecycle value (`dataSetStatus`): DRAFT | READY | AVAILABLE. */
+  backendStatus: "DRAFT" | "READY" | "AVAILABLE" | null;
+  /** Non-null while a saga is in flight (CREATE/UPDATE/DELETE) — the 409 guard. */
+  pendingSagaType: string | null;
+}
 
-  switch (raw.toUpperCase()) {
-    case "DRAFT":
-      return "DRAFT";
-    case "READY":
-    case "STAGED":
-      return "READY";
-    case "AVAILABLE":
-    case "RELEASED":
-    case "PUBLISHED":
-      return "AVAILABLE";
-    case "RELEASING":
-    case "PROVISIONING":
-    case "PENDING":
-      return "PROVISIONING";
-    default:
-      return null;
+/**
+ * Read the dataset's provisioning state. [verified 2026-07-14] The status field
+ * is `dataSetStatus`; `pendingSagaType` is set while a saga runs and cleared on
+ * saga end (success or compensated). The pair is the reliable poll criterion:
+ * wait until `pendingSagaType` is null, then `dataSetStatus` is the true outcome
+ * (AVAILABLE = provisioned; READY = saga failed and was compensated).
+ */
+export function readDatasetState(datasetBody: unknown): DatasetState {
+  if (!datasetBody || typeof datasetBody !== "object") {
+    return { backendStatus: null, pendingSagaType: null };
   }
+  const record = datasetBody as Record<string, unknown>;
+
+  const rawStatus = record.dataSetStatus;
+  const backendStatus =
+    rawStatus === "DRAFT" || rawStatus === "READY" || rawStatus === "AVAILABLE"
+      ? rawStatus
+      : null;
+
+  const rawSaga = record.pendingSagaType;
+  const pendingSagaType = typeof rawSaga === "string" && rawSaga ? rawSaga : null;
+
+  return { backendStatus, pendingSagaType };
+}
+
+/**
+ * Project the backend state onto the app's lifecycle status. PROVISIONING is an
+ * app-level pseudo-state meaning "a saga is still in flight".
+ */
+export function toLifecycleStatus(state: DatasetState): DatasetLifecycleStatus | null {
+  if (state.pendingSagaType !== null) return "PROVISIONING";
+  return state.backendStatus;
 }

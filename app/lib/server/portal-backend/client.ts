@@ -168,11 +168,62 @@ export class PortalBackendClient {
     );
   }
 
+  /**
+   * `POST /datastructures/{id}/release` → status. Required before a DataSource may
+   * link one of its versions (the backend rejects links to non-AVAILABLE parents).
+   */
+  async releaseDatastructure(datastructureId: string): Promise<number> {
+    return this.postTransition(
+      `/datastructures/${encodeURIComponent(datastructureId)}/release`,
+      "datastructure-release",
+    );
+  }
+
+  /** `POST /datastructures/{id}/unrelease` → status (needed before delete). */
+  async unreleaseDatastructure(datastructureId: string): Promise<number> {
+    return this.postTransition(
+      `/datastructures/${encodeURIComponent(datastructureId)}/unrelease`,
+      "datastructure-unrelease",
+    );
+  }
+
+  /** `DELETE /datastructures/{id}`. 404 is treated as success. */
+  async deleteDatastructure(datastructureId: string): Promise<void> {
+    await this.deleteResource(
+      `/datastructures/${encodeURIComponent(datastructureId)}`,
+      "datastructure",
+    );
+  }
+
   // ── Datasources ──────────────────────────────────────────────────────────────
 
   /** `POST /datasources`. */
   async createDatasource(payload: unknown): Promise<CreatedResource> {
     return this.postResource("/datasources", payload, "datasource");
+  }
+
+  /**
+   * `POST /datasources/{id}/release` → status. Required before a Pipeline may link
+   * this datasource.
+   */
+  async releaseDatasource(datasourceId: string): Promise<number> {
+    return this.postTransition(
+      `/datasources/${encodeURIComponent(datasourceId)}/release`,
+      "datasource-release",
+    );
+  }
+
+  /** `POST /datasources/{id}/unrelease` → status (needed before delete). */
+  async unreleaseDatasource(datasourceId: string): Promise<number> {
+    return this.postTransition(
+      `/datasources/${encodeURIComponent(datasourceId)}/unrelease`,
+      "datasource-unrelease",
+    );
+  }
+
+  /** `DELETE /datasources/{id}`. 404 is treated as success. */
+  async deleteDatasource(datasourceId: string): Promise<void> {
+    await this.deleteResource(`/datasources/${encodeURIComponent(datasourceId)}`, "datasource");
   }
 
   // ── Datasets (the aggregate root of a use case) ──────────────────────────────
@@ -205,6 +256,11 @@ export class PortalBackendClient {
   /** `POST /datasets/{id}/stage` → DRAFT→READY (validates the pipeline config). Returns status. */
   async stageDataset(dataSetId: string): Promise<number> {
     return this.postTransition(`/datasets/${encodeURIComponent(dataSetId)}/stage`, "stage");
+  }
+
+  /** `POST /datasets/{id}/unstage` → READY→DRAFT (required before deleting a READY dataset). */
+  async unstageDataset(dataSetId: string): Promise<number> {
+    return this.postTransition(`/datasets/${encodeURIComponent(dataSetId)}/unstage`, "unstage");
   }
 
   /**
@@ -249,6 +305,22 @@ export class PortalBackendClient {
   /** `DELETE /datasets/{id}` (a DRAFT dataset can be deleted directly). 404 is treated as success. */
   async deleteDataset(dataSetId: string): Promise<void> {
     await this.deleteResource(`/datasets/${encodeURIComponent(dataSetId)}`, "dataset");
+  }
+
+  /** `DELETE /datasets/{dataSetId}/pipelines/{pipelineId}`. 404 is treated as success. */
+  async deletePipeline(dataSetId: string, pipelineId: string): Promise<void> {
+    await this.deleteResource(
+      `/datasets/${encodeURIComponent(dataSetId)}/pipelines/${encodeURIComponent(pipelineId)}`,
+      "pipeline",
+    );
+  }
+
+  /** `DELETE /datasets/{dataSetId}/datasinks/{datasinkId}`. 404 is treated as success. */
+  async deleteDatasink(dataSetId: string, datasinkId: string): Promise<void> {
+    await this.deleteResource(
+      `/datasets/${encodeURIComponent(dataSetId)}/datasinks/${encodeURIComponent(datasinkId)}`,
+      "datasink",
+    );
   }
 
   private async deleteResource(path: string, label: string): Promise<void> {
