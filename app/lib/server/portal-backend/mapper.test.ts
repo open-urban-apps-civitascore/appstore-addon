@@ -3,8 +3,10 @@ import { describe, test } from "node:test";
 
 import type { UseCaseBundle } from "@/lib/server/bundle";
 import {
+  bindPipelineModel,
   buildInstallPlan,
   readDatasetState,
+  readSinkType,
   toDatasetBody,
   toDatasinkBody,
   toDatasourceBody,
@@ -132,5 +134,100 @@ describe("mapper — dataset state reading (poll criterion)", () => {
     assert.equal(toLifecycleStatus({ backendStatus: "AVAILABLE", pendingSagaType: null }), "AVAILABLE");
     assert.equal(toLifecycleStatus({ backendStatus: "READY", pendingSagaType: null }), "READY");
     assert.equal(toLifecycleStatus({ backendStatus: null, pendingSagaType: null }), null);
+  });
+});
+
+// A minimal React-Flow pipeline model, shaped like the portal editor's output
+// (Start → dataSource → frost sink → End), with authoring-instance entityIds.
+const PIPELINE_MODEL = {
+  nodes: [
+    { id: "n-start", type: "start", data: { label: "Start" }, position: { x: 0, y: 0 } },
+    {
+      id: "n-src",
+      type: "dataSource",
+      data: { label: "DataSource", entityId: "AUTHORED-SRC", entityType: "datasource" },
+      position: { x: 1, y: 0 },
+    },
+    {
+      id: "n-sink",
+      type: "frost",
+      data: { label: "Sink", entityId: "AUTHORED-SINK", entityType: "frost" },
+      position: { x: 2, y: 0 },
+    },
+    { id: "n-end", type: "end", data: { label: "End" }, position: { x: 3, y: 0 } },
+  ],
+  edges: [
+    { id: "e1", source: "n-start", target: "n-src", type: "smoothstep" },
+    { id: "e2", source: "n-src", target: "n-sink", type: "smoothstep" },
+    { id: "e3", source: "n-sink", target: "n-end", type: "smoothstep" },
+  ],
+  viewport: { x: 0, y: 0, zoom: 1 },
+};
+
+describe("mapper — pipeline model binding", () => {
+  test("bindPipelineModel rebinds the source/sink entityIds by node type", () => {
+    const bound = bindPipelineModel(PIPELINE_MODEL, "NEW-SRC", "NEW-SINK") as {
+      nodes: { type: string; data: Record<string, unknown> }[];
+      edges: unknown[];
+      viewport: unknown;
+    };
+    const byType = (t: string) => bound.nodes.find((n) => n.type === t)!;
+    assert.equal(byType("dataSource").data.entityId, "NEW-SRC");
+    assert.equal(byType("frost").data.entityId, "NEW-SINK");
+    // start/end untouched (no entityId); edges + layout copied through
+    assert.ok(!("entityId" in byType("start").data));
+    assert.equal(bound.edges.length, 3);
+    assert.deepEqual(bound.viewport, { x: 0, y: 0, zoom: 1 });
+  });
+
+  test("bindPipelineModel is pure — the input model is not mutated", () => {
+    const before = JSON.stringify(PIPELINE_MODEL);
+    bindPipelineModel(PIPELINE_MODEL, "X", "Y");
+    assert.equal(JSON.stringify(PIPELINE_MODEL), before);
+  });
+
+  test("bindPipelineModel also rebinds a geoPersistence (geo/POSTGIS) sink node", () => {
+    const geoModel = {
+      nodes: [
+        { id: "s", type: "dataSource", data: { entityId: "OLD-SRC" } },
+        { id: "k", type: "geoPersistence", data: { entityId: "OLD-SINK" } },
+      ],
+      edges: [],
+    };
+    const bound = bindPipelineModel(geoModel, "NEW-SRC", "NEW-SINK") as {
+      nodes: { type: string; data: { entityId?: string } }[];
+    };
+    assert.equal(bound.nodes.find((n) => n.type === "dataSource")?.data.entityId, "NEW-SRC");
+    assert.equal(bound.nodes.find((n) => n.type === "geoPersistence")?.data.entityId, "NEW-SINK");
+  });
+
+  test("readSinkType reads the sink node type (geoPersistence → POSTGIS); defaults to FROST", () => {
+    assert.equal(readSinkType(PIPELINE_MODEL), "FROST");
+    assert.equal(readSinkType({ nodes: [{ type: "geoPersistence" }] }), "POSTGIS");
+    assert.equal(readSinkType(undefined), "FROST");
+    assert.equal(readSinkType({}), "FROST");
+  });
+
+  test("toDatasinkBody honours the sink type", () => {
+    assert.equal((toDatasinkBody("v", "POSTGIS") as Record<string, unknown>).dataSinkType, "POSTGIS");
+    assert.equal((toDatasinkBody("v") as Record<string, unknown>).dataSinkType, "FROST");
+  });
+
+  test("toPipelineBody uses the bundled model (rebound) when present", () => {
+    const body = toPipelineBody({ ...BUNDLE, pipeline: PIPELINE_MODEL }, "src-9", "sink-9") as {
+      model: { nodes: { type: string; data: Record<string, unknown> }[] };
+      dataSourceIds: string[];
+      dataSinkIds: string[];
+    };
+    assert.notDeepEqual(body.model, {}, "not the empty placeholder");
+    const byType = (t: string) => body.model.nodes.find((n) => n.type === t)!;
+    assert.equal(byType("dataSource").data.entityId, "src-9");
+    assert.equal(byType("frost").data.entityId, "sink-9");
+    assert.deepEqual(body.dataSourceIds, ["src-9"]);
+    assert.deepEqual(body.dataSinkIds, ["sink-9"]);
+  });
+
+  test("toPipelineBody sends an empty model when no pipeline is bundled (back-compat)", () => {
+    assert.deepEqual((toPipelineBody(BUNDLE, "s", "d") as Record<string, unknown>).model, {});
   });
 });

@@ -7,8 +7,10 @@
  * Needs the dev stack up (start-portal-dev.sh) with the default local ports.
  * Leaves the backend clean: everything the install creates is uninstalled again.
  *
- * Expected outcome with today's placeholder pipeline model: the release saga runs
- * and is compensated (NiFi rejects the empty flow graph) → final status READY.
+ * Expected outcome: the BUNDLE below ships a real flow graph (Start → dataSource →
+ * frost sink → End), so the release saga provisions fully → final status AVAILABLE.
+ * (A bundle without a pipeline model sends an empty graph → NiFi rejects it →
+ * compensated to READY.)
  */
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -64,6 +66,32 @@ const BUNDLE: UseCaseBundle = {
     },
   ],
   source: USE_CASE.source,
+  // A real flow graph (Start → dataSource → frost sink → End). The datasource/sink
+  // node entityIds (null here) are re-bound to the created ids at install time.
+  pipeline: {
+    nodes: [
+      { id: "n-start", type: "start", data: { label: "Start" }, position: { x: 80, y: 160 } },
+      {
+        id: "n-src",
+        type: "dataSource",
+        data: { label: "DataSource", entityId: null, entityType: "datasource" },
+        position: { x: 160, y: 160 },
+      },
+      {
+        id: "n-sink",
+        type: "frost",
+        data: { label: "Sensor Data Storage", entityId: null, entityType: "frost" },
+        position: { x: 480, y: 160 },
+      },
+      { id: "n-end", type: "end", data: { label: "End" }, position: { x: 780, y: 160 } },
+    ],
+    edges: [
+      { id: "e1", source: "n-start", target: "n-src", type: "smoothstep" },
+      { id: "e2", source: "n-src", target: "n-sink", type: "smoothstep" },
+      { id: "e3", source: "n-sink", target: "n-end", type: "smoothstep" },
+    ],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  },
 };
 
 async function main(): Promise<void> {

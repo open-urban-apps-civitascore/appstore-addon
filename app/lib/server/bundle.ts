@@ -47,6 +47,15 @@ export interface UseCaseBundle {
   source: NonNullable<UseCase["source"]>;
   /** The commit SHA `source.gitIdentifier` resolved to (immutable pin); absent if resolution failed. */
   commit?: string;
+  /**
+   * The pipeline flow graph (the React-Flow model the portal pipeline editor
+   * produces), from `core-ir/pipeline.json`. Optional: a bundle without it installs
+   * with an empty placeholder model (→ the release saga compensates to READY). Its
+   * datasource/datasink node `entityId`s are re-bound to this instance's freshly
+   * created ids at install time (see the mapper), so any ids recorded in the file
+   * are irrelevant.
+   */
+  pipeline?: Record<string, unknown>;
 }
 
 // GitLab-style raw file URL for a path at a pinned ref, mirroring how the
@@ -102,6 +111,30 @@ async function fetchJson(url: string): Promise<unknown> {
   });
 }
 
+/**
+ * Like {@link fetchJson} but a missing file (`404`) resolves to `undefined` instead
+ * of throwing — for optional bundle parts (e.g. the pipeline model).
+ */
+async function fetchOptionalJson(url: string): Promise<Record<string, unknown> | undefined> {
+  const response = await fetch(url, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  }).catch((error) => {
+    throw new BundleError(
+      `Bundle fetch failed: ${error instanceof Error ? error.message : url}`,
+      502,
+    );
+  });
+  if (response.status === 404) return undefined;
+  if (!response.ok) {
+    throw new BundleError(`Bundle fetch returned ${response.status} for ${url}`, 502);
+  }
+  return response.json().catch(() => {
+    throw new BundleError(`Bundle file is not valid JSON: ${url}`, 502);
+  }) as Promise<Record<string, unknown>>;
+}
+
 export async function fetchUseCaseBundle(
   source: NonNullable<UseCase["source"]>,
 ): Promise<UseCaseBundle> {
@@ -135,5 +168,8 @@ export async function fetchUseCaseBundle(
     elements.push({ ref: structureRef, schema });
   }
 
-  return { dataset, elements, source, commit: commit ?? undefined };
+  // Optional flow graph — a bundle without it installs with an empty placeholder.
+  const pipeline = await fetchOptionalJson(rawUrl(repoUrl, ref, "core-ir/pipeline.json"));
+
+  return { dataset, elements, source, commit: commit ?? undefined, pipeline };
 }

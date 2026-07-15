@@ -6,6 +6,7 @@ import { PortalBackendError } from "@/lib/server/portal-backend/errors";
 import {
   buildInstallPlan,
   readDatasetState,
+  readSinkType,
   toDatasetBody,
   toDatasinkBody,
   toDatasourceBody,
@@ -175,9 +176,24 @@ export async function installUseCase(useCase: UseCase, deps?: InstallDeps): Prom
     steps.push(step("dataset (DRAFT)", "POST", "/datasets", dataset.status));
 
     // 4. Datasink FIRST (the pipeline links it via dataSinkIds), then the pipeline.
-    const datasink = await d.client.createDatasink(datasetId, toDatasinkBody(primaryVersionId));
+    //    The sink type comes from the bundle's pipeline sink node. Only FROST is
+    //    supported/verified; a geospatial (POSTGIS / `geoPersistence`) sink needs a
+    //    non-blank `tableName` the bundle doesn't carry yet, so reject it upfront
+    //    rather than provision a sink the NiFi step fails on (→ opaque compensation
+    //    to READY). TODO(content): read the tableName off the geoPersistence node.
+    const sinkType = readSinkType(bundle.pipeline);
+    if (sinkType !== "FROST") {
+      throw new PortalBackendError(
+        `Use case ${useCase.id} declares a ${sinkType} storage sink, which the marketplace does not support yet (it needs a table name the bundle doesn't carry). Only FROST (SensorThings) sinks are supported.`,
+        501,
+      );
+    }
+    const datasink = await d.client.createDatasink(
+      datasetId,
+      toDatasinkBody(primaryVersionId, sinkType),
+    );
     partial.dataSinkId = datasink.id;
-    steps.push(step("datasink (FROST)", "POST", `/datasets/${datasetId}/datasinks`, datasink.status));
+    steps.push(step(`datasink (${sinkType})`, "POST", `/datasets/${datasetId}/datasinks`, datasink.status));
 
     const pipeline = await d.client.createPipeline(
       datasetId,

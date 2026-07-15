@@ -23,12 +23,13 @@ import type { DatasetLifecycleStatus, UseCase } from "@/types/use-cases";
  *  - a dataset needs a non-blank `description`, or `stage` rejects it.
  *
  * Source of truth = the use case's CORE-IR bundle (`fetchUseCaseBundle`): a dataset
- * manifest plus one JSON Schema per datastructure element. The bundle does not
- * (yet) carry a datasource config or a pipeline flow graph, so those are
- * synthesized as clearly-marked placeholders (`TODO(content)`). Consequence: the
- * release saga's NiFi step rejects the empty pipeline `model` ("pipeline graph has
- * no datasource node") and compensates — the install lands on READY, not
- * AVAILABLE, until real content arrives in the bundle.
+ * manifest, one JSON Schema per datastructure element, and — optionally — a
+ * pipeline flow graph (`core-ir/pipeline.json`, re-bound to this instance here).
+ * The bundle does not (yet) carry a datasource config, so that stays a
+ * clearly-marked placeholder (`TODO(content)`). When no pipeline is bundled the
+ * model is an empty placeholder, so the release saga's NiFi step rejects it
+ * ("pipeline graph has no datasource node") and compensates — the install lands on
+ * READY, not AVAILABLE, until real content arrives in the bundle.
  */
 
 /** Connector types the portal-backend's datasource endpoint accepts. */
@@ -141,15 +142,81 @@ export function toDatasetBody(bundle: UseCaseBundle): Record<string, unknown> {
   };
 }
 
+/** Sink kinds the portal-backend's datasink endpoint accepts. */
+export type DatasinkType = "FROST" | "POSTGIS";
+
 /**
- * `POST /datasets/{id}/datasinks` body. [verified 2026-07-14]
- * A FROST sink's whole configuration is the datastructure *version* it persists.
+ * `POST /datasets/{id}/datasinks` body.
+ * A FROST sink's whole configuration is the datastructure *version* it persists
+ * (verified live 2026-07-14). A POSTGIS sink additionally needs a non-blank
+ * `tableName` (backend `PostgisConfiguration`, enforced by the NiFi
+ * `PostgisSinkStage`), carried on the pipeline's `geoPersistence` node — not yet
+ * plumbed through, so the orchestrator rejects POSTGIS sinks upfront (see
+ * install.ts). The type comes from the bundle's pipeline sink node (via
+ * {@link readSinkType}); FROST is the default when no pipeline is bundled.
  */
-export function toDatasinkBody(dataStructureVersionId: string): Record<string, unknown> {
+export function toDatasinkBody(
+  dataStructureVersionId: string,
+  sinkType: DatasinkType = "FROST",
+): Record<string, unknown> {
   return {
-    dataSinkType: "FROST",
+    dataSinkType: sinkType,
     configuration: { dataStructureVersionId },
   };
+}
+
+// A pipeline model node whose type identifies the single source / single sink.
+// NODE types (React-Flow graph) are NOT the DataSink RESOURCE type: the source node
+// is `dataSource`; the sink node is `frost` (→ FROST resource) or `geoPersistence`
+// (→ POSTGIS resource). Confirmed in config-adapter `NodeKind` (the only Role.SINK
+// kinds are `frost`/`geoPersistence`) and the portal pipeline-editor node vocabulary.
+const SOURCE_NODE_TYPES = new Set(["dataSource"]);
+const SINK_NODE_TYPES = new Set(["frost", "geoPersistence"]);
+
+/**
+ * Re-bind a bundled pipeline model to this instance. The React-Flow model the
+ * portal editor produces embeds the *authoring instance's* datasource/datasink
+ * UUIDs on each node's `data.entityId`; on install those resources get fresh
+ * server-assigned ids, so we rewrite the source node's `entityId` to the created
+ * datasource id and the sink node's to the created datasink id. Matching is by node
+ * `type` — FlowPath guarantees exactly one source and one sink. Everything else
+ * (edges keyed by node `id`, layout) is copied through untouched. Pure: the input
+ * model is deep-cloned, never mutated.
+ */
+export function bindPipelineModel(
+  model: Record<string, unknown>,
+  dataSourceId: string,
+  dataSinkId: string,
+): Record<string, unknown> {
+  const clone = structuredClone(model);
+  const nodes = clone.nodes;
+  if (Array.isArray(nodes)) {
+    for (const node of nodes) {
+      if (!node || typeof node !== "object") continue;
+      const n = node as { type?: unknown; data?: Record<string, unknown> };
+      if (typeof n.type !== "string" || !n.data || typeof n.data !== "object") continue;
+      if (SOURCE_NODE_TYPES.has(n.type)) n.data.entityId = dataSourceId;
+      else if (SINK_NODE_TYPES.has(n.type)) n.data.entityId = dataSinkId;
+    }
+  }
+  return clone;
+}
+
+/**
+ * The sink type (`FROST`/`POSTGIS`) declared by the bundle's pipeline sink node, so
+ * the created DataSink matches the flow graph. Defaults to `FROST` when no pipeline
+ * is bundled or no sink node is found.
+ */
+export function readSinkType(pipeline: Record<string, unknown> | undefined): DatasinkType {
+  const nodes = pipeline?.nodes;
+  if (Array.isArray(nodes)) {
+    for (const node of nodes) {
+      const t = (node as { type?: unknown })?.type;
+      if (t === "geoPersistence") return "POSTGIS";
+      if (t === "frost") return "FROST";
+    }
+  }
+  return "FROST";
 }
 
 /**
@@ -159,11 +226,10 @@ export function toDatasinkBody(dataStructureVersionId: string): Record<string, u
  * its id exists for `dataSinkIds`.
  *
  * `model` is the NiFi flow graph the config-adapter deploys (roles
- * SOURCE/TRANSFORM/SINK, edges, optional cron trigger — see FlowPath.derive).
- * TODO(content): we send an empty graph until the CORE-IR bundle carries a real
- * one, so the release saga's NiFi step fails ("pipeline graph has no datasource
- * node") and compensates — expected until #3/#5 lands. Shortcut for the format:
- * build one pipeline in the portal UI and GET it as a template.
+ * SOURCE/TRANSFORM/SINK, edges, optional cron trigger — see FlowPath.derive). When
+ * the bundle carries one, it is used with its source/sink `entityId`s re-bound to
+ * this instance's created ids ({@link bindPipelineModel}); otherwise an empty graph
+ * is sent, which the NiFi step rejects → the saga compensates to READY.
  */
 export function toPipelineBody(
   bundle: UseCaseBundle,
@@ -173,7 +239,7 @@ export function toPipelineBody(
   return {
     name: `${bundle.dataset.title} – Pipeline`,
     description: `Installed by the marketplace`,
-    model: {},
+    model: bundle.pipeline ? bindPipelineModel(bundle.pipeline, dataSourceId, dataSinkId) : {},
     dataSourceIds: [dataSourceId],
     dataSinkIds: [dataSinkId],
   };

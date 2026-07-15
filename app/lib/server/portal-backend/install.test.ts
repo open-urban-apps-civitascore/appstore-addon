@@ -163,7 +163,7 @@ function handle(req: IncomingMessage, res: ServerResponse, body: string): void {
   return status(404);
 }
 
-function makeDeps(store: InMemoryInstallStore): InstallDeps {
+function makeDeps(store: InMemoryInstallStore, bundle: UseCaseBundle = BUNDLE): InstallDeps {
   return {
     client: new PortalBackendClient({
       baseUrl,
@@ -173,7 +173,7 @@ function makeDeps(store: InMemoryInstallStore): InstallDeps {
       }),
     }),
     store,
-    fetchBundle: async () => BUNDLE,
+    fetchBundle: async () => bundle,
     now: () => new Date("2020-01-02T03:04:05.000Z"),
     poll: { intervalMs: 1, timeoutMs: 50 },
   };
@@ -348,6 +348,67 @@ describe("portal-backend install orchestrator", () => {
       requests.map((r) => `${r.method} ${r.path}`),
       ["GET /datasets/set-existing"],
     );
+  });
+
+  test("install with a bundled pipeline: real model, entityIds rebound to created ids, sink type from model", async () => {
+    const pipeline = {
+      nodes: [
+        { id: "n-start", type: "start", data: { label: "Start" } },
+        { id: "n-src", type: "dataSource", data: { label: "DataSource", entityId: "AUTHORED-SRC" } },
+        { id: "n-sink", type: "frost", data: { label: "Sink", entityId: "AUTHORED-SINK" } },
+        { id: "n-end", type: "end", data: { label: "End" } },
+      ],
+      edges: [
+        { id: "e1", source: "n-start", target: "n-src" },
+        { id: "e2", source: "n-src", target: "n-sink" },
+        { id: "e3", source: "n-sink", target: "n-end" },
+      ],
+    };
+    const store = new InMemoryInstallStore();
+
+    await installUseCase(USE_CASE, makeDeps(store, { ...BUNDLE, pipeline }));
+
+    const pipelineReq = requests.find((r) => r.method === "POST" && r.path.endsWith("/pipelines"));
+    const body = pipelineReq?.body as {
+      model: { nodes: { type: string; data: { entityId?: string } }[] };
+      dataSourceIds: string[];
+      dataSinkIds: string[];
+    };
+    const nodeOf = (t: string) => body.model.nodes.find((n) => n.type === t);
+    // source/sink nodes now carry the CREATED ids the orchestrator linked, NOT the
+    // authoring-instance ids that came in the bundle
+    assert.notEqual(nodeOf("dataSource")?.data.entityId, "AUTHORED-SRC");
+    assert.equal(nodeOf("dataSource")?.data.entityId, body.dataSourceIds[0]);
+    assert.equal(nodeOf("frost")?.data.entityId, body.dataSinkIds[0]);
+    // the datasink was created with the type declared by the model's sink node
+    const sinkReq = requests.find((r) => r.method === "POST" && r.path.endsWith("/datasinks"));
+    assert.equal((sinkReq?.body as { dataSinkType: string }).dataSinkType, "FROST");
+  });
+
+  test("install rejects a geoPersistence (POSTGIS) sink pipeline — not supported yet — and rolls back", async () => {
+    config.datasetStates = [{ dataSetStatus: "DRAFT", pendingSagaType: null }];
+    const pipeline = {
+      nodes: [
+        { id: "n-start", type: "start", data: {} },
+        { id: "n-src", type: "dataSource", data: { entityId: null } },
+        { id: "n-sink", type: "geoPersistence", data: { entityId: null } },
+        { id: "n-end", type: "end", data: {} },
+      ],
+      edges: [],
+    };
+    const store = new InMemoryInstallStore();
+
+    await assert.rejects(
+      () => installUseCase(USE_CASE, makeDeps(store, { ...BUNDLE, pipeline })),
+      /POSTGIS|does not support/,
+    );
+
+    const sequence = requests.map((r) => `${r.method} ${r.path}`);
+    // the POSTGIS guard fires BEFORE the datasink is created; whatever was made so
+    // far (datastructures, datasource) is rolled back, and nothing is recorded
+    assert.ok(!sequence.some((s) => s.endsWith("/datasinks")), "no datasink created");
+    assert.ok(sequence.some((s) => s.startsWith("DELETE /datastructures/")), "datastructures rolled back");
+    assert.equal(await store.get(USE_CASE.id), null);
   });
 
   test("uninstall of an AVAILABLE install: unrelease → teardown saga lands on READY → unstage → delete cascade", async () => {
