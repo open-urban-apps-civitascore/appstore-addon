@@ -213,9 +213,10 @@ describe("mapper — pipeline model binding", () => {
     assert.equal((toDatasinkBody("v") as Record<string, unknown>).dataSinkType, "FROST");
   });
 
-  test("toPipelineBody uses the bundled model (rebound) when present", () => {
+  test("toPipelineBody uses the bundled model (rebound) in BOTH model and styles", () => {
     const body = toPipelineBody({ ...BUNDLE, pipeline: PIPELINE_MODEL }, "src-9", "sink-9") as {
       model: { nodes: { type: string; data: Record<string, unknown> }[] };
+      styles: { nodes: { type: string; data: Record<string, unknown> }[] };
       dataSourceIds: string[];
       dataSinkIds: string[];
     };
@@ -225,9 +226,13 @@ describe("mapper — pipeline model binding", () => {
     assert.equal(byType("frost").data.entityId, "sink-9");
     assert.deepEqual(body.dataSourceIds, ["src-9"]);
     assert.deepEqual(body.dataSinkIds, ["sink-9"]);
+    // `styles` must carry the same graph — the editor renders from `styles`, not `model`
+    assert.deepEqual(body.styles, body.model);
   });
 
-  test("toPipelineBody sends an empty model when no pipeline is bundled (back-compat)", () => {
-    assert.deepEqual((toPipelineBody(BUNDLE, "s", "d") as Record<string, unknown>).model, {});
+  test("toPipelineBody sends an empty model+styles when no pipeline is bundled (back-compat)", () => {
+    const body = toPipelineBody(BUNDLE, "s", "d") as Record<string, unknown>;
+    assert.deepEqual(body.model, {});
+    assert.deepEqual(body.styles, {});
   });
 });

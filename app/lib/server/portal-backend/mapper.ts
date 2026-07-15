@@ -225,21 +225,27 @@ export function readSinkType(pipeline: Record<string, unknown> | undefined): Dat
  * NO release lifecycle — the sink merely has to be created before the pipeline so
  * its id exists for `dataSinkIds`.
  *
- * `model` is the NiFi flow graph the config-adapter deploys (roles
- * SOURCE/TRANSFORM/SINK, edges, optional cron trigger — see FlowPath.derive). When
- * the bundle carries one, it is used with its source/sink `entityId`s re-bound to
- * this instance's created ids ({@link bindPipelineModel}); otherwise an empty graph
- * is sent, which the NiFi step rejects → the saga compensates to READY.
+ * The flow graph (roles SOURCE/TRANSFORM/SINK, edges, optional cron trigger — see
+ * FlowPath.derive) is stored in **two** fields, and the portal writes both on save
+ * (verified 2026-07-14): `model` is what the config-adapter (NiFi) provisions from;
+ * `styles` is what the pipeline EDITOR reads to render the canvas — it *ignores*
+ * `model` (`createSessionFromBackendDTO` reads `dto.styles`). Set only `model` and
+ * the pipeline provisions fine but shows an EMPTY editor. When the bundle carries a
+ * graph, its source/sink `entityId`s are re-bound to this instance's created ids
+ * ({@link bindPipelineModel}); otherwise an empty graph is sent, which the NiFi
+ * step rejects → the saga compensates to READY.
  */
 export function toPipelineBody(
   bundle: UseCaseBundle,
   dataSourceId: string,
   dataSinkId: string,
 ): Record<string, unknown> {
+  const graph = bundle.pipeline ? bindPipelineModel(bundle.pipeline, dataSourceId, dataSinkId) : {};
   return {
     name: `${bundle.dataset.title} – Pipeline`,
     description: `Installed by the marketplace`,
-    model: bundle.pipeline ? bindPipelineModel(bundle.pipeline, dataSourceId, dataSinkId) : {},
+    model: graph, // provisioned by the config-adapter (NiFi) at release
+    styles: graph, // read by the portal pipeline editor to render the canvas
     dataSourceIds: [dataSourceId],
     dataSinkIds: [dataSinkId],
   };
