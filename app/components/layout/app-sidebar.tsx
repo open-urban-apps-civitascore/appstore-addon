@@ -1,13 +1,11 @@
 import Link from "next/link";
 import {
   ChevronRight,
-  Database,
   FileQuestion,
   Hexagon,
   LayoutGrid,
   type LucideIcon,
   PackageCheck,
-  Users,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -50,28 +48,6 @@ const getNavSections = (installedCount: number, useCaseCount: number): NavSectio
           ],
         },
         { title: text.nav.installed, href: "/installed", icon: PackageCheck, count: installedCount },
-        {
-          title: text.nav.data,
-          href: "/data",
-          icon: Database,
-          hasChildren: true,
-          children: [
-            { title: text.nav.dataSets, href: "/data/datasets" },
-            { title: text.nav.dataSources, href: "/data/datasources" },
-            { title: text.nav.dataStructures, href: "/data/datastructures" },
-          ],
-        },
-      ],
-    },
-    {
-      title: text.sections.admin,
-      items: [
-        {
-          title: text.nav.tenantManagement,
-          href: "/tenant",
-          icon: Users,
-          hasChildren: true,
-        },
       ],
     },
     {
