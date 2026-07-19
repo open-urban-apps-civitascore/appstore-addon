@@ -1,4 +1,6 @@
 import { getInstallStore } from "@/lib/server/install-store";
+import { getMockInstallStore } from "@/lib/server/mock/deps";
+import { isMockMode } from "@/lib/server/mock/mode";
 import {
   defaultInstallDeps,
   refreshInstalledUseCaseStatus,
@@ -22,7 +24,10 @@ import type { InstalledUseCase } from "@/types/use-cases";
  * usable even when the portal-backend is down or unconfigured).
  */
 export async function listInstalledUseCases(): Promise<InstalledUseCase[]> {
-  const records = await getInstallStore().list();
+  // Mock mode reads the mock store — the SAME store the mock install deps write
+  // to (a list read from the real store would miss every mock install).
+  const store = isMockMode() ? getMockInstallStore() : getInstallStore();
+  const records = await store.list();
 
   // Build the backend deps once; if the portal-backend is unconfigured, skip the
   // live refresh and serve stored records rather than failing the whole list.

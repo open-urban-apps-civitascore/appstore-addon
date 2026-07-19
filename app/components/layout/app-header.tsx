@@ -1,6 +1,8 @@
-import { LayoutGrid, LogOut } from "lucide-react";
+import { FlaskConical, LayoutGrid, LogOut } from "lucide-react";
 import { auth, signOut } from "@/auth";
 import { redirect } from "next/navigation";
+
+import { isMockMode } from "@/lib/server/mock/mode";
 
 interface AppHeaderProps {
   breadcrumb?: string;
@@ -23,10 +25,18 @@ export const AppHeader = async ({
       </div>
 
       <div className="flex items-center gap-4">
-        <span className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs text-muted-foreground">
-          <span className="size-1.5 rounded-full bg-success" />
-          Verbunden · {connection}
-        </span>
+        {isMockMode() ? (
+          // Unmistakable mock signal: never let demo data pass for a live backend.
+          <span className="flex items-center gap-1.5 rounded-full border border-amber-500/50 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-500">
+            <FlaskConical className="size-3.5" />
+            Mock-Modus · Demo-Daten
+          </span>
+        ) : (
+          <span className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs text-muted-foreground">
+            <span className="size-1.5 rounded-full bg-success" />
+            Verbunden · {connection}
+          </span>
+        )}
         <div className="flex size-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
           {initials}
         </div>

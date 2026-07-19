@@ -1,3 +1,5 @@
+import { mockRepoListIndex } from "@/lib/server/mock/fixtures/catalog";
+import { isMockMode } from "@/lib/server/mock/mode";
 import { type Addon } from "@/types/addons";
 import { repoListIndexSchema, type RepoListIndex } from "@/types/repo-list";
 import { type UseCase } from "@/types/use-cases";
@@ -17,7 +19,7 @@ import { type UseCase } from "@/types/use-cases";
  * See gitlab.com/civitascore-openurbanapps/civitas-marketplace-catalog.
  */
 
-type IndexOrigin = "remote" | "unconfigured" | "unreachable";
+type IndexOrigin = "remote" | "unconfigured" | "unreachable" | "mock";
 
 type CacheEntry = {
   index: RepoListIndex;
@@ -42,6 +44,9 @@ const FETCH_TIMEOUT_MS = 5000;
 // Module-scoped: shared across requests within a server process, reset on deploy.
 let cache: CacheEntry | undefined;
 
+// Mock mode: a stable entry built once from the fixture catalog (no network at all).
+let mockEntry: CacheEntry | undefined;
+
 function ttlMs(): number {
   const configured = Number(process.env.REPO_LIST_TTL_SECONDS);
   return (Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TTL_SECONDS) * 1000;
@@ -57,6 +62,17 @@ function emptyEntry(origin: "unconfigured" | "unreachable"): CacheEntry {
 }
 
 async function loadIndex(): Promise<CacheEntry> {
+  // Mock mode: the fixture catalog replaces the remote entirely (one of the three
+  // mock seams — see lib/server/mock/mode.ts).
+  if (isMockMode()) {
+    return (mockEntry ??= {
+      index: mockRepoListIndex,
+      fetchedAt: new Date(),
+      origin: "mock",
+      stale: false,
+    });
+  }
+
   // Serve a fresh, healthy cache without touching the network. A stale entry is
   // deliberately not short-circuited so we retry the remote on the next call.
   if (cache && !cache.stale && Date.now() - cache.fetchedAt.getTime() < ttlMs()) {

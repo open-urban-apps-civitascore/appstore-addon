@@ -4,6 +4,7 @@ import { auth, signIn } from "@/auth";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { getMarketplaceText } from "@/lib/marketplace-text";
+import { isMockMode } from "@/lib/server/mock/mode";
 
 interface MarketplacePageShellProps {
   children: ReactNode;
@@ -18,7 +19,9 @@ export async function MarketplacePageShell({
 }: MarketplacePageShellProps) {
   const session = await auth();
 
-  if (!session?.user) {
+  // Mock mode runs fully offline (no Keycloak) — skip the sign-in wall. The
+  // header shows the mock badge instead of a user-backed session.
+  if (!session?.user && !isMockMode()) {
     const text = getMarketplaceText();
     return (
       <main className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
@@ -41,7 +44,7 @@ export async function MarketplacePageShell({
   return (
     <div className="flex">
       <AppSidebar
-        tenantName={tenantName || session.user.name || session.user.email || undefined}
+        tenantName={tenantName || session?.user?.name || session?.user?.email || undefined}
       />
       <main className="flex h-svh flex-1 flex-col overflow-hidden">
         <AppHeader breadcrumb={breadcrumb} />

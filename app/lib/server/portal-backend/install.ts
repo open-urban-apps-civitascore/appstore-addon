@@ -1,5 +1,7 @@
 import { fetchUseCaseBundle, type UseCaseBundle } from "@/lib/server/bundle";
 import { getInstallStore, type InstallStore } from "@/lib/server/install-store";
+import { getMockInstallDeps } from "@/lib/server/mock/deps";
+import { isMockMode } from "@/lib/server/mock/mode";
 import { createAuthHeaderProvider, requiredPortalBackendEnv } from "@/lib/server/portal-backend/auth";
 import { PortalBackendClient } from "@/lib/server/portal-backend/client";
 import { PortalBackendError } from "@/lib/server/portal-backend/errors";
@@ -69,6 +71,10 @@ const DEFAULT_POLL = { intervalMs: 2_000, timeoutMs: 60_000 };
 
 /** Build the production dependencies from environment configuration. */
 export function defaultInstallDeps(): InstallDeps {
+  // Mock mode: same orchestrator, mock collaborators (in-memory backend,
+  // fixture bundles, separate seeded store) — see lib/server/mock/.
+  if (isMockMode()) return getMockInstallDeps();
+
   return {
     client: new PortalBackendClient({
       baseUrl: requiredPortalBackendEnv("PORTAL_BACKEND_BASE_URL"),
