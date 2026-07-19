@@ -70,6 +70,28 @@ describe("mapper — verified portal-backend payload shapes", () => {
     assert.ok(!("config" in body), "the field is `configuration`, not `config`");
   });
 
+  test("datasource body: an own-broker override replaces the demo preset", () => {
+    const own = toDatasourceBody(USE_CASE, BUNDLE, "v-123", {
+      url: "tcp://broker.stadt.example:1883",
+      topic: "stadt/verkehr",
+      username: "svc",
+      password: "geheim",
+    }) as Record<string, any>;
+    assert.deepEqual(own.configuration.urls, ["tcp://broker.stadt.example:1883"]);
+    assert.deepEqual(own.configuration.topics, ["stadt/verkehr"]);
+    assert.equal(own.configuration.user, "svc");
+    assert.equal(own.configuration.password, "geheim");
+    assert.equal(own.dataStructureVersionId, "v-123");
+
+    // Credentials appear ONLY when given — no empty user/password fields.
+    const noCreds = toDatasourceBody(USE_CASE, BUNDLE, "v-123", {
+      url: "tcp://b:1883",
+      topic: "t",
+    }) as Record<string, any>;
+    assert.ok(!("user" in noCreds.configuration), "no user field without a username");
+    assert.ok(!("password" in noCreds.configuration), "no password field without a password");
+  });
+
   test("dataset body: no datastructure refs, non-blank description (stage requires it)", () => {
     const body = toDatasetBody(BUNDLE);
     assert.equal(body.name, "Baumkataster Starter");

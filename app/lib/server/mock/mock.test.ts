@@ -164,6 +164,74 @@ describe("mock mode — the real orchestrator against the mock backend", () => {
     assert.equal(await deps.store.get("mittelerde-trafficcounter"), null);
   });
 
+  test("fork: stage-for-review stops at READY — dataset release is never called", async () => {
+    const deps = testDeps();
+    const { record } = await installUseCase(findUseCase("mittelerde-trafficcounter"), deps, {
+      dataSource: { mode: "demo" },
+      goLive: "stage",
+      answers: {},
+    });
+
+    assert.equal(record.status, "READY");
+    const labels = record.provisioningTrace?.steps.map((s) => s.label) ?? [];
+    assert.ok(labels.includes("stage (DRAFT→READY)"), `trace: ${labels.join(" | ")}`);
+    // The dataset release ("release (saga started)") and saga steps must be absent —
+    // "release datasource"/"release datastructure …" are expected and unaffected.
+    assert.ok(!labels.some((l) => l.startsWith("release (")), `trace: ${labels.join(" | ")}`);
+    assert.ok(!labels.some((l) => l.startsWith("saga ")), `trace: ${labels.join(" | ")}`);
+
+    // A READY install uninstalls via unstage → delete cascade.
+    assert.equal(await uninstallUseCase("mittelerde-trafficcounter", deps), true);
+  });
+
+  test("fork: configure-later installs a DRAFT shell — datastructures + dataset only", async () => {
+    const deps = testDeps();
+    const { record } = await installUseCase(findUseCase("mittelerde-trafficcounter"), deps, {
+      dataSource: { mode: "later" },
+      goLive: "release",
+      answers: {},
+    });
+
+    assert.equal(record.status, "DRAFT");
+    assert.equal(record.provisionedResources?.dataSourceId, undefined);
+    assert.equal(record.provisionedResources?.pipelineId, undefined);
+    assert.equal(record.provisionedResources?.dataSinkId, undefined);
+    assert.equal(record.provisionedResources?.dataStructures.length, 2);
+
+    const labels = record.provisioningTrace?.steps.map((s) => s.label) ?? [];
+    assert.ok(labels.includes("dataset (DRAFT — datasource deferred)"), `trace: ${labels.join(" | ")}`);
+    assert.ok(
+      !labels.some(
+        (l) =>
+          l.startsWith("datasource") ||
+          l === "release datasource" ||
+          l.startsWith("datasink") ||
+          l.startsWith("pipeline") ||
+          l.startsWith("stage"),
+      ),
+      `trace: ${labels.join(" | ")}`,
+    );
+
+    // A DRAFT shell uninstalls directly (no unrelease/unstage needed).
+    assert.equal(await uninstallUseCase("mittelerde-trafficcounter", deps), true);
+  });
+
+  test("fork: non-empty install answers are persisted on the record", async () => {
+    const deps = testDeps();
+    const { record } = await installUseCase(findUseCase("mittelerde-trafficcounter"), deps, {
+      dataSource: { mode: "demo" },
+      goLive: "release",
+      answers: {
+        "Welche Zählstellen-Standorte sollen initial erfasst werden?": "Marktplatz, Bahnhof",
+        "Unbeantwortet": "   ",
+      },
+    });
+
+    assert.deepEqual(record.installAnswers, {
+      "Welche Zählstellen-Standorte sollen initial erfasst werden?": "Marktplatz, Bahnhof",
+    });
+  });
+
   test("uninstalling a seeded record works although the mock backend never saw it", async () => {
     const deps = testDeps();
     for (const record of mockInstalledSeed) await deps.store.save(record);

@@ -7,6 +7,7 @@ import { isMockMode } from "@/lib/server/mock/mode";
 import { PortalBackendError } from "@/lib/server/portal-backend/errors";
 import { installUseCase } from "@/lib/server/portal-backend/install";
 import { removeInstalledUseCaseById } from "@/lib/use-case-installations";
+import { installOptionsSchema } from "@/types/install-options";
 
 export const runtime = "nodejs";
 
@@ -36,7 +37,7 @@ function errorResponse(error: unknown): NextResponse {
 }
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const denied = await unauthorized();
@@ -48,8 +49,19 @@ export async function POST(
     return NextResponse.json({ error: "Use case not found" }, { status: 404 });
   }
 
+  // The pre-install fork (D10). A missing/empty body falls back to all defaults
+  // (demo source, release now) — the pre-fork one-click behavior.
+  const body = await request.json().catch(() => ({}));
+  const parsed = installOptionsSchema.safeParse(body ?? {});
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Ungültige Installationsoptionen.", details: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
+
   try {
-    const { record, created } = await installUseCase(useCase);
+    const { record, created } = await installUseCase(useCase, undefined, parsed.data);
     return NextResponse.json({
       message: created
         ? "Use case provisioned via the CivitasCore portal-backend"

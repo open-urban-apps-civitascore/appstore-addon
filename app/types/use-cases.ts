@@ -144,6 +144,10 @@ export const installedUseCaseSchema = z.object({
   ),
   // The use case's CORE dataset reference (URN), carried for display/traceability.
   datasetRef: datasetReferenceSchema,
+  // Answers the installer gave to the bundle's installQuestions (keyed by the
+  // question text). Free text — never secrets (broker credentials go only into
+  // the backend datasource configuration, per D3).
+  installAnswers: z.record(z.string(), z.string()).optional(),
   provisioningTrace: provisioningTraceSchema.optional(),
   // Absent on records written before the delete-cascade support; uninstall then
   // falls back to removing only the dataset.

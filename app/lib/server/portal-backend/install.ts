@@ -15,6 +15,7 @@ import {
   toLifecycleStatus,
   toPipelineBody,
 } from "@/lib/server/portal-backend/mapper";
+import { DEFAULT_INSTALL_OPTIONS, type InstallOptions } from "@/types/install-options";
 import {
   installedUseCaseSchema,
   type DatasetLifecycleStatus,
@@ -110,11 +111,20 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  *
  * Idempotent: if this use case is already recorded and its dataset still exists on
  * the backend, the existing install is reused (its live status refreshed) rather
- * than creating a duplicate. A `409 Conflict` on release (a saga already in flight)
- * is likewise treated as "already provisioning", not an error.
+ * than creating a duplicate — the options of the *first* install stand. A `409
+ * Conflict` on release (a saga already in flight) is likewise treated as "already
+ * provisioning", not an error.
+ *
+ * `options` is the pre-install fork (D10): data source demo/own/later + go-live
+ * release/stage. Omitted → the one-click demo path (demo source, release now).
  */
-export async function installUseCase(useCase: UseCase, deps?: InstallDeps): Promise<InstallOutcome> {
+export async function installUseCase(
+  useCase: UseCase,
+  deps?: InstallDeps,
+  options?: InstallOptions,
+): Promise<InstallOutcome> {
   const d = deps ?? defaultInstallDeps();
+  const opts = options ?? DEFAULT_INSTALL_OPTIONS;
 
   // ── Idempotent reuse ─────────────────────────────────────────────────────────
   const existing = await d.store.get(useCase.id);
@@ -178,82 +188,124 @@ export async function installUseCase(useCase: UseCase, deps?: InstallDeps): Prom
       throw new Error(`Use case ${useCase.id}: bundle contains no datastructures to install.`);
     }
 
-    // 2. Datasource — links the released version; must itself be released before the
-    //    pipeline may link it.
-    const datasource = await d.client.createDatasource(
-      toDatasourceBody(useCase, bundle, primaryVersionId),
-    );
-    partial.dataSourceId = datasource.id;
-    steps.push(step("datasource", "POST", "/datasources", datasource.status));
-
-    const datasourceRelease = await d.client.releaseDatasource(datasource.id);
-    steps.push(step("release datasource", "POST", `/datasources/${datasource.id}/release`, datasourceRelease));
-
-    // 3. Dataset — created in DRAFT (the aggregate root of the use case).
-    const dataset = await d.client.createDataset(toDatasetBody(bundle));
-    datasetId = dataset.id;
-    steps.push(step("dataset (DRAFT)", "POST", "/datasets", dataset.status));
-
-    // 4. Datasink FIRST (the pipeline links it via dataSinkIds), then the pipeline.
-    //    The sink type comes from the bundle's pipeline sink node. Only FROST is
-    //    supported/verified; a geospatial (POSTGIS / `geoPersistence`) sink needs a
-    //    non-blank `tableName` the bundle doesn't carry yet, so reject it upfront
-    //    rather than provision a sink the NiFi step fails on (→ opaque compensation
-    //    to READY). TODO(content): read the tableName off the geoPersistence node.
-    const sinkType = readSinkType(bundle.pipeline);
-    if (sinkType !== "FROST") {
-      throw new PortalBackendError(
-        `Use case ${useCase.id} declares a ${sinkType} storage sink, which the marketplace does not support yet (it needs a table name the bundle doesn't carry). Only FROST (SensorThings) sinks are supported.`,
-        501,
-      );
-    }
-    const datasink = await d.client.createDatasink(
-      datasetId,
-      toDatasinkBody(primaryVersionId, sinkType),
-    );
-    partial.dataSinkId = datasink.id;
-    steps.push(step(`datasink (${sinkType})`, "POST", `/datasets/${datasetId}/datasinks`, datasink.status));
-
-    const pipeline = await d.client.createPipeline(
-      datasetId,
-      toPipelineBody(bundle, datasource.id, datasink.id),
-    );
-    partial.pipelineId = pipeline.id;
-    steps.push(step("pipeline", "POST", `/datasets/${datasetId}/pipelines`, pipeline.status));
-
-    // 5. Lifecycle: stage validates the pipeline wiring (DRAFT→READY)…
-    const stageStatus = await d.client.stageDataset(datasetId);
-    steps.push(step("stage (DRAFT→READY)", "POST", `/datasets/${datasetId}/stage`, stageStatus));
-
-    // …then release triggers the async provisioning saga (READY→AVAILABLE).
-    const release = await d.client.releaseDataset(datasetId);
-    steps.push(
-      step(
-        release.kind === "in-flight" ? "release (409 saga already in flight)" : "release (saga started)",
-        "POST",
-        `/datasets/${datasetId}/release`,
-        release.status,
-      ),
-    );
-
-    // 6. The saga is asynchronous AND the status flips optimistically to AVAILABLE
-    //    before it finishes — a single read lies. Two modes (see InstallDeps.awaitSaga):
-    //    - await (tests/CLI): poll until `pendingSagaType` clears, then record the true
-    //      outcome (AVAILABLE = provisioned, READY = compensated).
-    //    - the app (awaitSaga=false): return NOW as PROVISIONING and let the installed
-    //      view poll the transition — a blocking wait would hold the HTTP request open
-    //      for the whole saga and hide PROVISIONING → AVAILABLE from the UI.
     let status: DatasetLifecycleStatus;
-    if (d.awaitSaga ?? true) {
-      const outcome = await awaitSagaOutcome(d, datasetId);
-      status = outcome.status;
-      if (outcome.sagaOutcome) steps.push(step(outcome.sagaOutcome, "GET", `/datasets/${datasetId}`, 200));
+
+    if (opts.dataSource.mode === "later") {
+      // D10 "configure later": no data source exists yet, so nothing below the
+      // dataset can be built (a pipeline may only link an AVAILABLE datasource,
+      // and stage requires a wired pipeline). Install a DRAFT shell — the released
+      // datastructures + the dataset — and let the post-install activation
+      // complete the graph once the source is configured.
+      const dataset = await d.client.createDataset(toDatasetBody(bundle));
+      datasetId = dataset.id;
+      steps.push(step("dataset (DRAFT — datasource deferred)", "POST", "/datasets", dataset.status));
+      status = "DRAFT";
     } else {
-      // Right after release the dataset is optimistically AVAILABLE with a pending
-      // CREATE saga → projects to PROVISIONING (readDatasetState / toLifecycleStatus).
-      const live = await d.client.getDataset(datasetId).catch(() => null);
-      status = toLifecycleStatus(readDatasetState(live)) ?? "PROVISIONING";
+      // 2. Datasource — links the released version; must itself be released before
+      //    the pipeline may link it. "own" carries the user's broker config into
+      //    the backend payload (credentials never touch the record/trace — D3);
+      //    "demo" uses the preset in-cluster broker.
+      const datasource = await d.client.createDatasource(
+        toDatasourceBody(
+          useCase,
+          bundle,
+          primaryVersionId,
+          opts.dataSource.mode === "own" ? opts.dataSource.config : undefined,
+        ),
+      );
+      partial.dataSourceId = datasource.id;
+      steps.push(
+        step(
+          opts.dataSource.mode === "own" ? "datasource (own broker)" : "datasource (demo preset)",
+          "POST",
+          "/datasources",
+          datasource.status,
+        ),
+      );
+
+      const datasourceRelease = await d.client.releaseDatasource(datasource.id);
+      steps.push(step("release datasource", "POST", `/datasources/${datasource.id}/release`, datasourceRelease));
+
+      // 3. Dataset — created in DRAFT (the aggregate root of the use case).
+      const dataset = await d.client.createDataset(toDatasetBody(bundle));
+      datasetId = dataset.id;
+      steps.push(step("dataset (DRAFT)", "POST", "/datasets", dataset.status));
+
+      // 4. Datasink FIRST (the pipeline links it via dataSinkIds), then the pipeline.
+      //    The sink type comes from the bundle's pipeline sink node. Only FROST is
+      //    supported/verified; a geospatial (POSTGIS / `geoPersistence`) sink needs a
+      //    non-blank `tableName` the bundle doesn't carry yet, so reject it upfront
+      //    rather than provision a sink the NiFi step fails on (→ opaque compensation
+      //    to READY). TODO(content): read the tableName off the geoPersistence node.
+      const sinkType = readSinkType(bundle.pipeline);
+      if (sinkType !== "FROST") {
+        throw new PortalBackendError(
+          `Use case ${useCase.id} declares a ${sinkType} storage sink, which the marketplace does not support yet (it needs a table name the bundle doesn't carry). Only FROST (SensorThings) sinks are supported.`,
+          501,
+        );
+      }
+      const datasink = await d.client.createDatasink(
+        datasetId,
+        toDatasinkBody(primaryVersionId, sinkType),
+      );
+      partial.dataSinkId = datasink.id;
+      steps.push(step(`datasink (${sinkType})`, "POST", `/datasets/${datasetId}/datasinks`, datasink.status));
+
+      const pipeline = await d.client.createPipeline(
+        datasetId,
+        toPipelineBody(bundle, datasource.id, datasink.id),
+      );
+      partial.pipelineId = pipeline.id;
+      steps.push(step("pipeline", "POST", `/datasets/${datasetId}/pipelines`, pipeline.status));
+
+      // 5. Lifecycle: stage validates the pipeline wiring (DRAFT→READY)…
+      const stageStatus = await d.client.stageDataset(datasetId);
+      steps.push(step("stage (DRAFT→READY)", "POST", `/datasets/${datasetId}/stage`, stageStatus));
+
+      if (opts.goLive === "stage") {
+        // D10 "stage for review": stop at READY. Releasing is a privileged,
+        // reviewed action (DATASET_RELEASE) — an authorised human takes it live
+        // later via the post-install activation.
+        status = "READY";
+      } else {
+        // …then release triggers the async provisioning saga (READY→AVAILABLE).
+        const release = await d.client.releaseDataset(datasetId);
+        steps.push(
+          step(
+            release.kind === "in-flight" ? "release (409 saga already in flight)" : "release (saga started)",
+            "POST",
+            `/datasets/${datasetId}/release`,
+            release.status,
+          ),
+        );
+
+        // 6. The saga is asynchronous AND the status flips optimistically to AVAILABLE
+        //    before it finishes — a single read lies. Two modes (see InstallDeps.awaitSaga):
+        //    - await (tests/CLI): poll until `pendingSagaType` clears, then record the true
+        //      outcome (AVAILABLE = provisioned, READY = compensated).
+        //    - the app (awaitSaga=false): return NOW as PROVISIONING and let the installed
+        //      view poll the transition — a blocking wait would hold the HTTP request open
+        //      for the whole saga and hide PROVISIONING → AVAILABLE from the UI.
+        if (d.awaitSaga ?? true) {
+          const outcome = await awaitSagaOutcome(d, datasetId);
+          status = outcome.status;
+          if (outcome.sagaOutcome) steps.push(step(outcome.sagaOutcome, "GET", `/datasets/${datasetId}`, 200));
+        } else {
+          // Right after release the dataset is optimistically AVAILABLE with a pending
+          // CREATE saga → projects to PROVISIONING (readDatasetState / toLifecycleStatus).
+          const live = await d.client.getDataset(datasetId).catch(() => null);
+          status = toLifecycleStatus(readDatasetState(live)) ?? "PROVISIONING";
+        }
+      }
     }
+
+    // Non-empty answers to the bundle's installQuestions — free text, no secrets
+    // (broker credentials live only in the datasource payload above).
+    const answers = Object.fromEntries(
+      Object.entries(opts.answers)
+        .map(([question, answer]) => [question, answer.trim()])
+        .filter(([, answer]) => answer !== ""),
+    );
 
     const record = installedUseCaseSchema.parse({
       id: datasetId,
@@ -270,6 +322,7 @@ export async function installUseCase(useCase: UseCase, deps?: InstallDeps): Prom
       },
       createdDataStructures: plan.summary.dataStructures,
       datasetRef: useCase.modelForge,
+      installAnswers: Object.keys(answers).length > 0 ? answers : undefined,
       provisioningTrace: { provisionedAt: d.now().toISOString(), steps },
       provisionedResources: partial,
     } satisfies InstalledUseCase);

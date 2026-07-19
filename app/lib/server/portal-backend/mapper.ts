@@ -1,5 +1,6 @@
 import type { UseCaseBundle } from "@/lib/server/bundle";
 import { parseUrn } from "@/lib/urn";
+import type { OwnBrokerConfig } from "@/types/install-options";
 import type { DatasetLifecycleStatus, UseCase } from "@/types/use-cases";
 
 /**
@@ -101,30 +102,42 @@ export function toDatastructureVersionBody(
 }
 
 /**
- * `POST /datasources` body. Shape verified 2026-07-14; the *values* are a
- * placeholder MQTT connector because the CORE-IR bundle carries no connection
- * details yet. The linked datastructure version must already be AVAILABLE
- * (released), and so must its parent datastructure — the backend rejects the
- * create otherwise.
+ * `POST /datasources` body. Shape verified 2026-07-14. Without an override the
+ * *values* are the demo/preset MQTT connector (the in-cluster FROST broker) —
+ * the "demo source" of the D10 install fork. With an {@link OwnBrokerConfig}
+ * override (the "own broker" fork branch) the user's connection details are
+ * used instead; credentials go ONLY into this backend payload, never into the
+ * install record, the trace, or logs (D3). The linked datastructure version
+ * must already be AVAILABLE (released), and so must its parent datastructure —
+ * the backend rejects the create otherwise.
  */
 export function toDatasourceBody(
   useCase: UseCase,
   bundle: UseCaseBundle,
   dataStructureVersionId: string,
+  ownBroker?: OwnBrokerConfig,
 ): Record<string, unknown> {
-  // TODO(content): real connection details (and their secret parameters) must come
-  // from an extended CORE-IR bundle — this stand-in points at the local FROST
-  // broker so the config passes the backend's OnRelease validation.
   const connectorType: DatasourceConnectorType = "MQTT";
+  const configuration: Record<string, unknown> = ownBroker
+    ? {
+        urls: [ownBroker.url],
+        topics: [ownBroker.topic],
+        qos: 1,
+        ...(ownBroker.username ? { user: ownBroker.username } : {}),
+        ...(ownBroker.password ? { password: ownBroker.password } : {}),
+      }
+    : {
+        // Demo preset: points at the in-cluster FROST broker so the config passes
+        // the backend's OnRelease validation (and the demo simulator can publish).
+        urls: ["tcp://civitas-frost:1883"],
+        topics: [`civitas/${useCase.id}`],
+        qos: 1,
+      };
   return {
     name: `${bundle.dataset.title} – Source`,
     description: `Installed by the marketplace for ${useCase.id}`,
     connectorType,
-    configuration: {
-      urls: ["tcp://civitas-frost:1883"],
-      topics: [`civitas/${useCase.id}`],
-      qos: 1,
-    },
+    configuration,
     dataStructureVersionId,
   };
 }

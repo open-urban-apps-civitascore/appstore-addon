@@ -78,7 +78,10 @@ export default async function UseCaseDetailPage({
               </div>
 
               <div className="mt-1 flex flex-col items-start gap-1.5">
-                <InstallUseCaseButton useCaseId={useCase.id} />
+                <InstallUseCaseButton
+                  useCaseId={useCase.id}
+                  installQuestions={useCase.installQuestions}
+                />
                 <p className="text-xs text-muted-foreground">{text.useCases.installDescription}</p>
               </div>
             </div>

@@ -74,6 +74,20 @@ export function UseCaseInstallationCard({ installation }: { installation: Instal
         </p>
       </section>
 
+      {installation.installAnswers && Object.keys(installation.installAnswers).length > 0 ? (
+        <section className="rounded-md border bg-background p-4">
+          <p className="text-sm font-medium text-foreground">Angaben bei der Installation</p>
+          <dl className="mt-2 flex flex-col gap-2">
+            {Object.entries(installation.installAnswers).map(([question, answer]) => (
+              <div key={question} className="text-xs">
+                <dt className="text-muted-foreground">{question}</dt>
+                <dd className="mt-0.5 font-medium text-foreground">{answer}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ) : null}
+
       {installation.provisioningTrace ? (
         <details className="rounded-md border bg-background p-4">
           <summary className="cursor-pointer text-sm font-medium text-foreground">
