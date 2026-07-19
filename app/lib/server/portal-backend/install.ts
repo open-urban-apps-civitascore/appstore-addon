@@ -390,7 +390,11 @@ export async function refreshInstalledUseCaseStatus(
   const d = deps ?? defaultInstallDeps();
   const live = await d.client.getDataset(record.id);
   const status = live === null ? record.status : (toLifecycleStatus(readDatasetState(live)) ?? record.status);
-  return status === record.status ? record : withStatus(record, status);
+  if (status === record.status) return record;
+  // The status settled since the record was written (e.g. the async install
+  // returned PROVISIONING and the saga has now finished): carry the new status
+  // AND complete the trace with the saga-outcome step the async path left off.
+  return withStatus(withSagaOutcomeStep(record, status), status);
 }
 
 /**
@@ -412,13 +416,7 @@ async function awaitSagaOutcome(
     const state = readDatasetState(live);
 
     if (live !== null && state.pendingSagaType === null && state.backendStatus !== null) {
-      const outcome =
-        state.backendStatus === "AVAILABLE"
-          ? "saga succeeded (AVAILABLE)"
-          : state.backendStatus === "READY"
-            ? "saga failed — compensated back to READY"
-            : `saga finished (${state.backendStatus})`;
-      return { status: state.backendStatus, sagaOutcome: outcome };
+      return { status: state.backendStatus, sagaOutcome: sagaOutcomeLabel(state.backendStatus) };
     }
 
     if (Date.now() >= deadline) {
@@ -433,5 +431,34 @@ function withStatus(record: InstalledUseCase, status: DatasetLifecycleStatus): I
     ...record,
     status,
     createdDataset: { ...record.createdDataset, status },
+  };
+}
+
+/** The saga-outcome trace label for a settled dataset status. */
+function sagaOutcomeLabel(status: DatasetLifecycleStatus): string {
+  return status === "AVAILABLE"
+    ? "saga succeeded (AVAILABLE)"
+    : status === "READY"
+      ? "saga failed — compensated back to READY"
+      : `saga finished (${status})`;
+}
+
+/**
+ * Complete an async install's trace. The app returns PROVISIONING before the saga
+ * finishes, so its trace stops at "release (saga started)". When the status later
+ * settles, append the saga-outcome step the blocking path would have recorded.
+ * Idempotent (skips when an outcome step is already present); a no-op for a
+ * non-terminal status or a traceless record.
+ */
+function withSagaOutcomeStep(record: InstalledUseCase, status: DatasetLifecycleStatus): InstalledUseCase {
+  const trace = record.provisioningTrace;
+  if (!trace || (status !== "AVAILABLE" && status !== "READY")) return record;
+  if (trace.steps.at(-1)?.label.startsWith("saga ")) return record;
+  return {
+    ...record,
+    provisioningTrace: {
+      ...trace,
+      steps: [...trace.steps, step(sagaOutcomeLabel(status), "GET", `/datasets/${record.id}`, 200)],
+    },
   };
 }

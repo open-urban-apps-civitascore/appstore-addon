@@ -111,17 +111,26 @@ describe("mock mode — the real orchestrator against the mock backend", () => {
     assert.ok(labels.includes("saga succeeded (AVAILABLE)"), `trace was: ${labels.join(" | ")}`);
   });
 
-  test("app mode (awaitSaga:false): install returns PROVISIONING, the installed refresh settles it", async () => {
+  test("app mode (awaitSaga:false): install returns PROVISIONING; the refresh settles it and completes the trace", async () => {
     const deps: InstallDeps = { ...testDeps(), awaitSaga: false };
     const { record } = await installUseCase(findUseCase("mittelerde-trafficcounter"), deps);
 
-    // Returns the moment the saga starts — the UI can show "Wird provisioniert".
+    // Returns the moment the saga starts — the UI can show "Wird provisioniert" —
+    // and the trace stops at "release (saga started)", no outcome step yet.
     assert.equal(record.status, "PROVISIONING");
+    const atInstall = record.provisioningTrace?.steps.map((s) => s.label) ?? [];
+    assert.ok(!atInstall.some((l) => l.startsWith("saga ")), `trace at install: ${atInstall.join(" | ")}`);
 
-    // The 30ms saga settles; the installed view's per-record status refresh flips it.
+    // The 30ms saga settles; the installed view's per-record refresh flips the
+    // status AND appends the saga-outcome step the async install left off.
     await new Promise((resolve) => setTimeout(resolve, 60));
     const settled = await refreshInstalledUseCaseStatus(record, deps);
     assert.equal(settled.status, "AVAILABLE");
+    const afterSettle = settled.provisioningTrace?.steps.map((s) => s.label) ?? [];
+    assert.ok(
+      afterSettle.includes("saga succeeded (AVAILABLE)"),
+      `trace after settle: ${afterSettle.join(" | ")}`,
+    );
   });
 
   test("empty-model bundle (feinstaub) compensates to READY — like the live stack", async () => {

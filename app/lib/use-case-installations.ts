@@ -40,7 +40,13 @@ export async function listInstalledUseCases(): Promise<InstalledUseCase[]> {
 
   const refreshed = deps
     ? await Promise.all(
-        records.map((record) => refreshInstalledUseCaseStatus(record, deps).catch(() => record)),
+        records.map(async (record) => {
+          const updated = await refreshInstalledUseCaseStatus(record, deps).catch(() => record);
+          // Self-heal: persist a settled status (+ the completed trace) once, so the
+          // record stops being stuck at PROVISIONING and later reads need no re-heal.
+          if (updated !== record) await store.save(updated).catch(() => undefined);
+          return updated;
+        }),
       )
     : records;
 
