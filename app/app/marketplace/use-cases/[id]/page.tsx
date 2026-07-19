@@ -10,6 +10,7 @@ import { UseCaseFacts } from "@/components/use-cases/use-case-facts";
 import { MaturityBadge } from "@/components/use-cases/use-case-status";
 import { getUseCaseById } from "@/lib/getUseCases";
 import { getMarketplaceText } from "@/lib/marketplace-text";
+import { publisherSlug } from "@/lib/slug";
 
 export default async function UseCaseDetailPage({
   params,
@@ -62,7 +63,12 @@ export default async function UseCaseDetailPage({
                     <Building2 className="size-4" />
                   </span>
                   <span className="flex flex-col leading-tight">
-                    <span className="text-sm font-medium text-foreground">{useCase.publisher}</span>
+                    <Link
+                      href={`/marketplace/publishers/${publisherSlug(useCase.publisher)}`}
+                      className="text-sm font-medium text-foreground underline-offset-2 hover:underline"
+                    >
+                      {useCase.publisher}
+                    </Link>
                     <span className="text-xs text-muted-foreground">
                       {text.useCases.publisherLabel}
                     </span>

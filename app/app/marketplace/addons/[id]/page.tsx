@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getCatalog } from "@/lib/getCatalog";
 import { getMarketplaceText } from "@/lib/marketplace-text";
+import { publisherSlug } from "@/lib/slug";
 import type { Addon } from "@/types/addons";
 
 // Turn the deployment reference into a copy-ready install snippet, mirroring
@@ -180,7 +181,12 @@ export default async function AddonDetailPage({
               <h2 className="text-sm font-semibold text-foreground">{text.detail.details}</h2>
               <dl className="mt-3">
                 <DetailRow label={text.detail.publisher}>
-                  <span className="font-mono text-xs">{addon.author}</span>
+                  <Link
+                    href={`/marketplace/publishers/${publisherSlug(addon.author)}`}
+                    className="font-mono text-xs underline-offset-2 hover:underline"
+                  >
+                    {addon.author}
+                  </Link>
                 </DetailRow>
                 {addon.licenses?.addon ? (
                   <DetailRow label={text.detail.addonLicense}>
