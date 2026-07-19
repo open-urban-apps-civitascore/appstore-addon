@@ -1,5 +1,6 @@
 import { CalendarClock, Database, FileJson2, Link2 } from "lucide-react";
 
+import { ActivateInstalledUseCaseButton } from "@/components/use-cases/activate-installed-use-case-button";
 import { Badge } from "@/components/ui/badge";
 import { RemoveInstalledUseCaseButton } from "@/components/use-cases/remove-installed-use-case-button";
 import {
@@ -30,6 +31,10 @@ export function UseCaseInstallationCard({ installation }: { installation: Instal
         </div>
         <div className="flex flex-col items-end gap-3">
           <Badge>{DATASET_LIFECYCLE_STATUS_LABELS[installation.status]}</Badge>
+          <ActivateInstalledUseCaseButton
+            useCaseId={installation.useCaseId}
+            status={installation.status}
+          />
           <RemoveInstalledUseCaseButton useCaseId={installation.useCaseId} />
         </div>
       </div>

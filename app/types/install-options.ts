@@ -45,3 +45,22 @@ export type OwnBrokerConfig = z.infer<typeof ownBrokerConfigSchema>;
 
 /** The all-defaults options — the pre-fork one-click behavior. */
 export const DEFAULT_INSTALL_OPTIONS: InstallOptions = installOptionsSchema.parse({});
+
+/**
+ * Post-install activation (the second half of D10): finish a DRAFT install
+ * (choose the data source now — "later" is no longer an option) or release a
+ * READY one. `dataSource` is ignored for a READY record (its source exists).
+ */
+export const activationOptionsSchema = z.object({
+  dataSource: z
+    .discriminatedUnion("mode", [
+      z.object({ mode: z.literal("demo") }),
+      z.object({ mode: z.literal("own"), config: ownBrokerConfigSchema }),
+    ])
+    .default({ mode: "demo" }),
+  goLive: z.enum(["release", "stage"]).default("release"),
+});
+
+export type ActivationOptions = z.infer<typeof activationOptionsSchema>;
+
+export const DEFAULT_ACTIVATION_OPTIONS: ActivationOptions = activationOptionsSchema.parse({});

@@ -9,6 +9,7 @@ import { mockPortalBackendFetch, resetMockPortalBackend } from "@/lib/server/moc
 import { StubAuthHeaderProvider } from "@/lib/server/portal-backend/auth";
 import { PortalBackendClient } from "@/lib/server/portal-backend/client";
 import {
+  activateInstalledUseCase,
   installUseCase,
   refreshInstalledUseCaseStatus,
   uninstallUseCase,
@@ -230,6 +231,75 @@ describe("mock mode — the real orchestrator against the mock backend", () => {
     assert.deepEqual(record.installAnswers, {
       "Welche Zählstellen-Standorte sollen initial erfasst werden?": "Marktplatz, Bahnhof",
     });
+  });
+
+  test("activation: releasing a READY (stage-for-review) install takes it to AVAILABLE", async () => {
+    const deps = testDeps();
+    const useCase = findUseCase("mittelerde-trafficcounter");
+    await installUseCase(useCase, deps, { dataSource: { mode: "demo" }, goLive: "stage", answers: {} });
+
+    const activated = await activateInstalledUseCase(useCase, deps);
+    assert.equal(activated?.status, "AVAILABLE");
+    const labels = activated?.provisioningTrace?.steps.map((s) => s.label) ?? [];
+    assert.ok(labels.includes("release (saga started)"), `trace: ${labels.join(" | ")}`);
+    assert.ok(labels.includes("saga succeeded (AVAILABLE)"), `trace: ${labels.join(" | ")}`);
+  });
+
+  test("activation: completing a DRAFT shell builds the graph and reaches AVAILABLE", async () => {
+    const deps = testDeps();
+    const useCase = findUseCase("mittelerde-trafficcounter");
+    await installUseCase(useCase, deps, { dataSource: { mode: "later" }, goLive: "release", answers: {} });
+
+    const activated = await activateInstalledUseCase(useCase, deps, {
+      dataSource: { mode: "demo" },
+      goLive: "release",
+    });
+
+    assert.equal(activated?.status, "AVAILABLE");
+    assert.ok(activated?.provisionedResources?.dataSourceId, "datasource id recorded");
+    assert.ok(activated?.provisionedResources?.dataSinkId, "datasink id recorded");
+    assert.ok(activated?.provisionedResources?.pipelineId, "pipeline id recorded");
+    const labels = activated?.provisioningTrace?.steps.map((s) => s.label) ?? [];
+    assert.ok(labels.includes("activate: datasource (demo preset)"), `trace: ${labels.join(" | ")}`);
+    assert.ok(labels.includes("stage (DRAFT→READY)"), `trace: ${labels.join(" | ")}`);
+
+    // The completed install uninstalls like any AVAILABLE one.
+    assert.equal(await uninstallUseCase(useCase.id, deps), true);
+  });
+
+  test("activation: a DRAFT completed with goLive:stage stops at READY", async () => {
+    const deps = testDeps();
+    const useCase = findUseCase("mittelerde-trafficcounter");
+    await installUseCase(useCase, deps, { dataSource: { mode: "later" }, goLive: "release", answers: {} });
+
+    const activated = await activateInstalledUseCase(useCase, deps, {
+      dataSource: { mode: "demo" },
+      goLive: "stage",
+    });
+
+    assert.equal(activated?.status, "READY");
+    const labels = activated?.provisioningTrace?.steps.map((s) => s.label) ?? [];
+    assert.ok(!labels.some((l) => l.startsWith("release (")), `trace: ${labels.join(" | ")}`);
+  });
+
+  test("activation: a no-op for AVAILABLE installs and null when not installed", async () => {
+    const deps = testDeps();
+    const useCase = findUseCase("mittelerde-trafficcounter");
+    const { record } = await installUseCase(useCase, deps);
+
+    const activated = await activateInstalledUseCase(useCase, deps);
+    assert.equal(activated?.status, "AVAILABLE");
+    assert.equal(
+      activated?.provisioningTrace?.steps.length,
+      record.provisioningTrace?.steps.length,
+      "no trace steps appended on a no-op activation",
+    );
+
+    assert.equal(
+      await activateInstalledUseCase(findUseCase("mittelerde-feinstaub"), deps),
+      null,
+      "null for a use case that is not installed",
+    );
   });
 
   test("uninstalling a seeded record works although the mock backend never saw it", async () => {

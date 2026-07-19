@@ -15,7 +15,12 @@ import {
   toLifecycleStatus,
   toPipelineBody,
 } from "@/lib/server/portal-backend/mapper";
-import { DEFAULT_INSTALL_OPTIONS, type InstallOptions } from "@/types/install-options";
+import {
+  DEFAULT_ACTIVATION_OPTIONS,
+  DEFAULT_INSTALL_OPTIONS,
+  type ActivationOptions,
+  type InstallOptions,
+} from "@/types/install-options";
 import {
   installedUseCaseSchema,
   type DatasetLifecycleStatus,
@@ -359,6 +364,185 @@ export async function uninstallUseCase(useCaseId: string, deps?: InstallDeps): P
   await teardownBackendResources(d, record.id, record.provisionedResources);
   await d.store.remove(useCaseId);
   return true;
+}
+
+/**
+ * Post-install activation — the second half of D10. Completes what the install
+ * fork deferred, branching on the dataset's LIVE status:
+ *
+ *   - DRAFT ("configure later"): build the missing half of the graph — datasource
+ *     (demo preset or the user's own broker) → release → datasink → pipeline →
+ *     stage — then release (or stop at READY when `goLive: "stage"`).
+ *   - READY ("stage for review", or a compensated saga): release — the privileged
+ *     human action taking it live. Releasing a compensated-READY simply retries.
+ *   - AVAILABLE / saga in flight: nothing to do — returns the record unchanged.
+ *
+ * Failure semantics differ from install: a mid-activation failure must NOT tear
+ * down the previously-valid DRAFT — instead everything created so far is merged
+ * into the record (so uninstall can clean it up) and the error propagates; the
+ * next activation attempt removes those leftovers first and builds fresh.
+ *
+ * Returns null when this use case is not installed at all.
+ */
+export async function activateInstalledUseCase(
+  useCase: UseCase,
+  deps?: InstallDeps,
+  options?: ActivationOptions,
+): Promise<InstalledUseCase | null> {
+  const d = deps ?? defaultInstallDeps();
+  const opts = options ?? DEFAULT_ACTIVATION_OPTIONS;
+
+  const record = await d.store.get(useCase.id);
+  if (!record) return null;
+
+  const live = await d.client.getDataset(record.id);
+  if (live === null) {
+    throw new PortalBackendError(
+      "Der Datensatz existiert auf dem Portal-Backend nicht mehr — bitte deinstallieren und neu installieren.",
+      409,
+    );
+  }
+  const state = readDatasetState(live);
+  if (state.pendingSagaType !== null || state.backendStatus === "AVAILABLE") {
+    // Saga in flight or already live — activation has nothing to do.
+    return record;
+  }
+
+  const steps: ProvisioningStep[] = [];
+  const resources: ProvisionedResources = {
+    dataStructures: record.provisionedResources?.dataStructures ?? [],
+  };
+
+  if (state.backendStatus === "DRAFT") {
+    const bundle = await d.fetchBundle(useCase.source);
+    const primaryVersionId = resources.dataStructures.at(-1)?.versionId;
+    if (!primaryVersionId) {
+      throw new PortalBackendError(
+        "Die Installation trägt keine Datenstruktur-Versionen — der Entwurf kann nicht vervollständigt werden.",
+        500,
+      );
+    }
+
+    // Leftovers from a previously failed activation attempt: remove them first
+    // (best-effort), then build fresh — re-linking half-created children is not
+    // worth the complexity.
+    const leftovers = record.provisionedResources;
+    if (leftovers?.pipelineId) await d.client.deletePipeline(record.id, leftovers.pipelineId).catch(() => undefined);
+    if (leftovers?.dataSinkId) await d.client.deleteDatasink(record.id, leftovers.dataSinkId).catch(() => undefined);
+    if (leftovers?.dataSourceId) {
+      await d.client.unreleaseDatasource(leftovers.dataSourceId).catch(() => undefined);
+      await d.client.deleteDatasource(leftovers.dataSourceId).catch(() => undefined);
+    }
+
+    try {
+      const datasource = await d.client.createDatasource(
+        toDatasourceBody(
+          useCase,
+          bundle,
+          primaryVersionId,
+          opts.dataSource.mode === "own" ? opts.dataSource.config : undefined,
+        ),
+      );
+      resources.dataSourceId = datasource.id;
+      steps.push(
+        step(
+          opts.dataSource.mode === "own"
+            ? "activate: datasource (own broker)"
+            : "activate: datasource (demo preset)",
+          "POST",
+          "/datasources",
+          datasource.status,
+        ),
+      );
+
+      const datasourceRelease = await d.client.releaseDatasource(datasource.id);
+      steps.push(step("release datasource", "POST", `/datasources/${datasource.id}/release`, datasourceRelease));
+
+      const sinkType = readSinkType(bundle.pipeline);
+      if (sinkType !== "FROST") {
+        throw new PortalBackendError(
+          `Use case ${useCase.id} declares a ${sinkType} storage sink, which the marketplace does not support yet. Only FROST (SensorThings) sinks are supported.`,
+          501,
+        );
+      }
+      const datasink = await d.client.createDatasink(record.id, toDatasinkBody(primaryVersionId, sinkType));
+      resources.dataSinkId = datasink.id;
+      steps.push(step(`datasink (${sinkType})`, "POST", `/datasets/${record.id}/datasinks`, datasink.status));
+
+      const pipeline = await d.client.createPipeline(
+        record.id,
+        toPipelineBody(bundle, datasource.id, datasink.id),
+      );
+      resources.pipelineId = pipeline.id;
+      steps.push(step("pipeline", "POST", `/datasets/${record.id}/pipelines`, pipeline.status));
+
+      const stageStatus = await d.client.stageDataset(record.id);
+      steps.push(step("stage (DRAFT→READY)", "POST", `/datasets/${record.id}/stage`, stageStatus));
+    } catch (error) {
+      // Keep everything created so far on the record — uninstall relies on these
+      // ids, and the next activation attempt clears them before building fresh.
+      await d.store
+        .save(appendActivation(record, resources, steps, "DRAFT"))
+        .catch(() => undefined);
+      throw error;
+    }
+  } else {
+    // READY: the graph exists (stage-for-review or a compensated saga) — keep
+    // whatever child ids the record already carries.
+    resources.dataSourceId = record.provisionedResources?.dataSourceId;
+    resources.dataSinkId = record.provisionedResources?.dataSinkId;
+    resources.pipelineId = record.provisionedResources?.pipelineId;
+  }
+
+  let status: DatasetLifecycleStatus = "READY";
+  if (opts.goLive === "release") {
+    const release = await d.client.releaseDataset(record.id);
+    steps.push(
+      step(
+        release.kind === "in-flight" ? "release (409 saga already in flight)" : "release (saga started)",
+        "POST",
+        `/datasets/${record.id}/release`,
+        release.status,
+      ),
+    );
+
+    if (d.awaitSaga ?? true) {
+      const outcome = await awaitSagaOutcome(d, record.id);
+      status = outcome.status;
+      if (outcome.sagaOutcome) steps.push(step(outcome.sagaOutcome, "GET", `/datasets/${record.id}`, 200));
+    } else {
+      const liveAfter = await d.client.getDataset(record.id).catch(() => null);
+      status = toLifecycleStatus(readDatasetState(liveAfter)) ?? "PROVISIONING";
+    }
+  }
+
+  const updated = appendActivation(record, resources, steps, status);
+  await d.store.save(updated);
+  return updated;
+}
+
+/** Merge activation results into a record: resources, appended trace steps, status. */
+function appendActivation(
+  record: InstalledUseCase,
+  resources: ProvisionedResources,
+  steps: ProvisioningStep[],
+  status: DatasetLifecycleStatus,
+): InstalledUseCase {
+  const trace = record.provisioningTrace;
+  return withStatus(
+    {
+      ...record,
+      provisionedResources: resources,
+      provisioningTrace:
+        steps.length === 0
+          ? trace
+          : {
+              provisionedAt: trace?.provisionedAt ?? new Date().toISOString(),
+              steps: [...(trace?.steps ?? []), ...steps],
+            },
+    },
+    status,
+  );
 }
 
 /**
