@@ -59,6 +59,17 @@ export interface InstallDeps {
   now: () => Date;
   /** Post-release saga polling; injectable so tests run in milliseconds. */
   poll?: { intervalMs: number; timeoutMs: number };
+  /**
+   * Whether `installUseCase` blocks until the release saga settles.
+   *
+   * Defaults to **true** (tests + the CLI smoke assert the terminal outcome
+   * directly). The **app opts out** (`false`): the install then returns as
+   * PROVISIONING the moment the saga starts, and the installed view polls the
+   * PROVISIONING → AVAILABLE/READY transition. A blocking wait would otherwise
+   * hold the HTTP request open for the whole saga (up to a minute on the real
+   * backend) and hide the transition from the UI.
+   */
+  awaitSaga?: boolean;
 }
 
 export interface InstallOutcome {
@@ -83,6 +94,8 @@ export function defaultInstallDeps(): InstallDeps {
     store: getInstallStore(),
     fetchBundle: fetchUseCaseBundle,
     now: () => new Date(),
+    // Return PROVISIONING immediately; the installed view polls the saga outcome.
+    awaitSaga: false,
   };
 }
 
@@ -224,10 +237,23 @@ export async function installUseCase(useCase: UseCase, deps?: InstallDeps): Prom
     );
 
     // 6. The saga is asynchronous AND the status flips optimistically to AVAILABLE
-    //    before the saga finishes — a single read lies. Poll until `pendingSagaType`
-    //    clears; only then is `dataSetStatus` the true outcome.
-    const { status, sagaOutcome } = await awaitSagaOutcome(d, datasetId);
-    if (sagaOutcome) steps.push(step(sagaOutcome, "GET", `/datasets/${datasetId}`, 200));
+    //    before it finishes — a single read lies. Two modes (see InstallDeps.awaitSaga):
+    //    - await (tests/CLI): poll until `pendingSagaType` clears, then record the true
+    //      outcome (AVAILABLE = provisioned, READY = compensated).
+    //    - the app (awaitSaga=false): return NOW as PROVISIONING and let the installed
+    //      view poll the transition — a blocking wait would hold the HTTP request open
+    //      for the whole saga and hide PROVISIONING → AVAILABLE from the UI.
+    let status: DatasetLifecycleStatus;
+    if (d.awaitSaga ?? true) {
+      const outcome = await awaitSagaOutcome(d, datasetId);
+      status = outcome.status;
+      if (outcome.sagaOutcome) steps.push(step(outcome.sagaOutcome, "GET", `/datasets/${datasetId}`, 200));
+    } else {
+      // Right after release the dataset is optimistically AVAILABLE with a pending
+      // CREATE saga → projects to PROVISIONING (readDatasetState / toLifecycleStatus).
+      const live = await d.client.getDataset(datasetId).catch(() => null);
+      status = toLifecycleStatus(readDatasetState(live)) ?? "PROVISIONING";
+    }
 
     const record = installedUseCaseSchema.parse({
       id: datasetId,

@@ -8,7 +8,12 @@ import { mockInstalledSeed } from "@/lib/server/mock/installed-seed";
 import { mockPortalBackendFetch, resetMockPortalBackend } from "@/lib/server/mock/portal-backend";
 import { StubAuthHeaderProvider } from "@/lib/server/portal-backend/auth";
 import { PortalBackendClient } from "@/lib/server/portal-backend/client";
-import { installUseCase, uninstallUseCase, type InstallDeps } from "@/lib/server/portal-backend/install";
+import {
+  installUseCase,
+  refreshInstalledUseCaseStatus,
+  uninstallUseCase,
+  type InstallDeps,
+} from "@/lib/server/portal-backend/install";
 import type { UseCase } from "@/types/use-cases";
 
 /**
@@ -104,6 +109,19 @@ describe("mock mode — the real orchestrator against the mock backend", () => {
     assert.ok(record.provisionedResources?.pipelineId);
     const labels = record.provisioningTrace?.steps.map((s) => s.label) ?? [];
     assert.ok(labels.includes("saga succeeded (AVAILABLE)"), `trace was: ${labels.join(" | ")}`);
+  });
+
+  test("app mode (awaitSaga:false): install returns PROVISIONING, the installed refresh settles it", async () => {
+    const deps: InstallDeps = { ...testDeps(), awaitSaga: false };
+    const { record } = await installUseCase(findUseCase("mittelerde-trafficcounter"), deps);
+
+    // Returns the moment the saga starts — the UI can show "Wird provisioniert".
+    assert.equal(record.status, "PROVISIONING");
+
+    // The 30ms saga settles; the installed view's per-record status refresh flips it.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    const settled = await refreshInstalledUseCaseStatus(record, deps);
+    assert.equal(settled.status, "AVAILABLE");
   });
 
   test("empty-model bundle (feinstaub) compensates to READY — like the live stack", async () => {

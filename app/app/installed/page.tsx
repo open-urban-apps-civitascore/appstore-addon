@@ -1,5 +1,6 @@
 import { AlertTriangle } from "lucide-react";
 
+import { InstalledAutoRefresh } from "@/components/use-cases/installed-auto-refresh";
 import { MarketplacePageShell } from "@/components/marketplace/page-shell";
 import { UseCaseInstallationCard } from "@/components/use-cases/use-case-installation-card";
 import { getMarketplaceText } from "@/lib/marketplace-text";
@@ -20,11 +21,16 @@ export default async function InstalledPage() {
     loadError = error instanceof Error ? error.message : "Unbekannter Fehler";
   }
 
+  // While anything is still provisioning, poll so the PROVISIONING → AVAILABLE/READY
+  // transition appears without a manual reload.
+  const hasProvisioning = installations.some((installation) => installation.status === "PROVISIONING");
+
   return (
     <MarketplacePageShell
       breadcrumb={text.sidebar.nav.installed}
       tenantName="Stadt Musterstadt"
     >
+      <InstalledAutoRefresh active={hasProvisioning} />
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
         <div className="max-w-3xl">
           <h1 className="text-3xl font-bold text-foreground">{text.useCases.installedHeading}</h1>

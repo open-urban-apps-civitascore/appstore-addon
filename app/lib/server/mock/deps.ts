@@ -103,5 +103,7 @@ export function getMockInstallDeps(): InstallDeps {
     now: () => new Date(),
     // Snappier than the production 2s/60s: the mock saga resolves in ~1.5s.
     poll: { intervalMs: 400, timeoutMs: 30_000 },
+    // Like the app: return PROVISIONING immediately, let the installed view poll.
+    awaitSaga: false,
   };
 }
