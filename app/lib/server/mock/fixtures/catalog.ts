@@ -2,15 +2,15 @@ import { repoListIndexSchema, type RepoListIndex } from "@/types/repo-list";
 
 /**
  * Mock catalog fixture — a verbatim copy of the real repo-list `index.json`
- * (civitas-marketplace-catalog, v1.3.0), so the mock UI browses exactly what
+ * (civitas-marketplace-catalog, v1.3.1), so the mock UI browses exactly what
  * the live catalog serves. Parsed through the real zod schema at module load:
  * if the fixture ever drifts from the schema, the app fails loudly, not subtly.
  *
  * Regenerate: copy the current index.json content into RAW_INDEX (keep `$schema` out).
  */
 const RAW_INDEX = {
-  "version": "1.3.0",
-  "updatedAt": "2026-07-06T16:00:00Z",
+  "version": "1.3.1",
+  "updatedAt": "2026-07-19T12:00:00Z",
   "addons": [
     {
       "id": "nodered-addon",
@@ -278,7 +278,6 @@ const RAW_INDEX = {
         "PORTAL_BACKEND"
       ],
       "installQuestions": [
-        "Soll der Datensatz zunächst nur als Entwurf angelegt werden?",
         "Welche Fachabteilung soll den Datensatz später übernehmen?"
       ],
       "includedArtifacts": [
