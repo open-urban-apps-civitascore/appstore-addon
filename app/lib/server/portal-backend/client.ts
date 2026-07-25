@@ -203,6 +203,28 @@ export class PortalBackendClient {
   }
 
   /**
+   * `PATCH /datasources/{id}` → status. The !694 contract links the datastructure
+   * version AFTER the create (Bruno: create with `dataStructureVersionId: null`,
+   * then patch it in) — the create-time version lookup cannot authorize the link
+   * yet and 404s (`DataSourceService`, deliberately indistinguishable from
+   * missing). Body passes through opaque, like every payload.
+   */
+  async patchDatasource(datasourceId: string, payload: unknown): Promise<number> {
+    const response = await this.request(
+      "PATCH",
+      `/datasources/${encodeURIComponent(datasourceId)}`,
+      payload,
+    );
+    if (!response.ok) {
+      throw await this.responseError(
+        response,
+        `Portal-backend PATCH /datasources/${datasourceId} (datasource-link)`,
+      );
+    }
+    return response.status;
+  }
+
+  /**
    * `POST /datasources/{id}/release` → status. Required before a Pipeline may link
    * this datasource.
    */

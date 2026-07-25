@@ -155,6 +155,9 @@ export const mockPortalBackendFetch: typeof fetch = async (input, init) => {
       configurationUrn: mintUrn("datasource", sourceId),
     });
   }
+  if (method === "PATCH" && /^\/datasources\/[^/]+$/.test(path)) {
+    return ok();
+  }
   if (method === "POST" && /^\/datasources\/[^/]+\/(release|unrelease)$/.test(path)) {
     return ok();
   }

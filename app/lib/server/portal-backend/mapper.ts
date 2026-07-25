@@ -134,7 +134,6 @@ export function toDatastructureVersionBody(
 export function toDatasourceBody(
   useCase: UseCase,
   bundle: UseCaseBundle,
-  dataStructureVersionId: string,
   ownBroker?: OwnBrokerConfig,
 ): Record<string, unknown> {
   const connectorType: DatasourceConnectorType = "MQTT";
@@ -147,9 +146,15 @@ export function toDatasourceBody(
         ...(ownBroker.password ? { password: ownBroker.password } : {}),
       }
     : {
-        // Demo preset: points at the in-cluster FROST broker so the config passes
-        // the backend's OnRelease validation (and the demo simulator can publish).
-        urls: ["tcp://civitas-frost:1883"],
+        // Demo preset: the marketplace's own mosquitto (demo-broker/
+        // docker-compose.yml), joined to the platform stack's civitas-network.
+        // [live 2026-07-25] The dev stack has NO in-cluster MQTT broker
+        // (civitas-frost runs an HTTP-only FROST image — nothing on :1883), and
+        // the public broker.hivemq.com drops connections (EOF/32109) — both made
+        // NiFi's ConsumeMQTT show a red runtime error on the portal dataset
+        // page. The demo simulator publishes via host port 1884; the topic is
+        // silent (but healthily connected) until it does.
+        urls: ["tcp://civitas-mosquitto:1883"],
         topics: [`civitas/${useCase.id}`],
         qos: 1,
       };
@@ -158,14 +163,22 @@ export function toDatasourceBody(
     description: `Installed by the marketplace for ${useCase.id}`,
     connectorType,
     configuration,
-    // The Bruno flow creates the datasource FIRST (id: null) and PATCHes this in
-    // later, because its structures don't exist yet. The marketplace releases all
-    // structures before this call, so the id is linked inline — same field, same
-    // released-version requirement, one request less. (Fallback if the live run
-    // disagrees: PATCH /datasources/{id} with this field.)
-    dataStructureVersionId,
+    // MUST be null at create [live 2026-07-25]: the create-time version lookup
+    // cannot authorize the link yet and 404s ("DataSource with id '<versionId>'
+    // not found" — DataSourceService makes missing and unauthorized look alike).
+    // The link happens right after via PATCH ({@link toDatasourcePatchBody}),
+    // exactly like the Bruno flow (create → patch → release).
+    dataStructureVersionId: null,
     assignments: [],
   };
+}
+
+/**
+ * `PATCH /datasources/{id}` body linking the released datastructure version.
+ * [!694 Bruno: dataset-saga-postgis/4 — the only field the patch carries]
+ */
+export function toDatasourcePatchBody(dataStructureVersionId: string): Record<string, unknown> {
+  return { dataStructureVersionId };
 }
 
 /**

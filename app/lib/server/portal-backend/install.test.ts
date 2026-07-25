@@ -165,6 +165,7 @@ function handle(req: IncomingMessage, res: ServerResponse, body: string): void {
     if (/^\/datasets\/[^/]+\/unrelease$/.test(path)) return status(202);
     return status(404);
   }
+  if (method === "PATCH" && /^\/datasources\/[^/]+$/.test(path)) return status(200);
   if (method === "GET" && /^\/datasets\/[^/]+$/.test(path)) {
     const state =
       config.datasetStates[Math.min(getDatasetCalls, config.datasetStates.length - 1)];
@@ -267,11 +268,19 @@ describe("portal-backend install orchestrator", () => {
     assert.deepEqual(pipelineBody.dataSourceIds, ["src-5"]);
     assert.ok(Array.isArray(pipelineBody.dataSinkIds) && (pipelineBody.dataSinkIds as string[]).length === 1);
 
-    // the datasource wires to the LAST element's version (bundle refs are in
-    // dependency order — the top-level record comes last), here v-4; the FROST
-    // sink's configuration is EMPTY under !694 (schema resolved via the graph)
+    // [live 2026-07-25] the create carries NO version link (null); the link is
+    // PATCHed in afterwards, wiring the LAST element's version (bundle refs are
+    // in dependency order — the top-level record comes last), here v-4.
     const datasourceRequest = requests.find((r) => r.method === "POST" && r.path === "/datasources");
-    assert.equal((datasourceRequest?.body as Record<string, unknown>).dataStructureVersionId, "v-4");
+    assert.equal((datasourceRequest?.body as Record<string, unknown>).dataStructureVersionId, null);
+    const datasourcePatch = requests.find((r) => r.method === "PATCH" && /^\/datasources\/[^/]+$/.test(r.path));
+    assert.deepEqual(datasourcePatch?.body, { dataStructureVersionId: "v-4" });
+    // patch sits between create and release in arrival order
+    const arrival = requests.map((r) => `${r.method} ${r.path}`);
+    const createIdx = arrival.findIndex((s) => s === "POST /datasources");
+    const patchIdx = arrival.findIndex((s) => s.startsWith("PATCH /datasources/"));
+    const releaseIdx = arrival.findIndex((s) => /^POST \/datasources\/[^/]+\/release$/.test(s));
+    assert.ok(createIdx < patchIdx && patchIdx < releaseIdx, "create → patch → release");
     const datasinkRequest = requests.find((r) => r.method === "POST" && r.path.endsWith("/datasinks"));
     assert.deepEqual((datasinkRequest?.body as { configuration?: object }).configuration, {});
 

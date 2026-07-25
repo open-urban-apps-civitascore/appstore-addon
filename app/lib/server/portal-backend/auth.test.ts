@@ -42,6 +42,26 @@ describe("KeycloakPasswordGrantAuthProvider", () => {
     assert.equal(calls[0].body.get("grant_type"), "password");
     assert.equal(calls[0].body.get("client_id"), "admin-cli");
     assert.equal(calls[0].body.get("username"), "dev@civitas.local");
+    // A public client sends NO client_secret field at all.
+    assert.equal(calls[0].body.get("client_secret"), null);
+  });
+
+  test("sends the client_secret for a confidential client (portal-frontend, !694 principal fix)", async () => {
+    const { calls, fetchImpl } = mockKeycloak([{ access_token: "tok-c", expires_in: 300 }]);
+    const provider = new KeycloakPasswordGrantAuthProvider({
+      keycloakUrl: "http://keycloak.local:8080",
+      realm: "civitas-core",
+      clientId: "portal-frontend",
+      clientSecret: "dev-only-portal-frontend-secret",
+      username: "dev@civitas.local",
+      password: "dev123",
+      fetchImpl,
+    });
+
+    await provider.getAuthHeaders();
+
+    assert.equal(calls[0].body.get("client_id"), "portal-frontend");
+    assert.equal(calls[0].body.get("client_secret"), "dev-only-portal-frontend-secret");
   });
 
   test("caches the token across calls and re-mints only after expiry", async () => {

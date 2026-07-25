@@ -68,8 +68,17 @@ export interface KeycloakPasswordGrantOptions {
   keycloakUrl: string;
   /** Realm the portal-backend trusts as issuer (local dev: `civitas-core`). */
   realm: string;
-  /** A public client with Direct Access Grants enabled (local dev: `admin-cli`). */
+  /**
+   * A client with Direct Access Grants enabled. Against the Model-Forge-
+   * integrated backend (!694) this MUST be a client whose access tokens carry
+   * user claims (`sub`, `azp`, username) — local dev: `portal-frontend` (+ its
+   * secret). `admin-cli` mints claimless tokens on this realm, and the backend's
+   * ScopeAccessAuthorizer then denies every body-reference check with
+   * "no authenticated user principal" (surfacing as misleading 404s).
+   */
   clientId: string;
+  /** Client secret — required for confidential clients like `portal-frontend`. */
+  clientSecret?: string;
   username: string;
   password: string;
   /** Value for `X-Allowed-Scope-Ids`. Defaults to {@link PLACEHOLDER_ALLOWED_SCOPE_IDS}. */
@@ -111,7 +120,7 @@ export class KeycloakPasswordGrantAuthProvider implements PortalBackendAuthHeade
       return this.cached.token;
     }
 
-    const { keycloakUrl, realm, clientId, username, password } = this.options;
+    const { keycloakUrl, realm, clientId, clientSecret, username, password } = this.options;
     const tokenUrl = `${keycloakUrl.replace(/\/+$/, "")}/realms/${encodeURIComponent(realm)}/protocol/openid-connect/token`;
     const fetchImpl = this.options.fetchImpl ?? fetch;
 
@@ -121,6 +130,7 @@ export class KeycloakPasswordGrantAuthProvider implements PortalBackendAuthHeade
       body: new URLSearchParams({
         grant_type: "password",
         client_id: clientId,
+        ...(clientSecret ? { client_secret: clientSecret } : {}),
         username,
         password,
         scope: "openid",
@@ -162,7 +172,11 @@ export class KeycloakPasswordGrantAuthProvider implements PortalBackendAuthHeade
  * credentials are configured:
  *   - PORTAL_BACKEND_KEYCLOAK_URL       — e.g. http://localhost:8080
  *   - PORTAL_BACKEND_KEYCLOAK_REALM     — default `civitas-core`
- *   - PORTAL_BACKEND_KEYCLOAK_CLIENT_ID — default `admin-cli`
+ *   - PORTAL_BACKEND_KEYCLOAK_CLIENT_ID — default `admin-cli`; against the !694
+ *     backend use `portal-frontend` (admin-cli tokens carry no user claims and
+ *     every scope-authorized reference then 404s — see KeycloakPasswordGrantOptions)
+ *   - PORTAL_BACKEND_KEYCLOAK_CLIENT_SECRET — required for confidential clients
+ *     (local dev portal-frontend: `dev-only-portal-frontend-secret`)
  *   - PORTAL_BACKEND_KEYCLOAK_USERNAME / PORTAL_BACKEND_KEYCLOAK_PASSWORD
  *
  * Otherwise the stub (static headers / optional static token):
@@ -198,6 +212,7 @@ export function createAuthHeaderProvider(): PortalBackendAuthHeaderProvider {
       keycloakUrl,
       realm: process.env.PORTAL_BACKEND_KEYCLOAK_REALM?.trim() || "civitas-core",
       clientId: process.env.PORTAL_BACKEND_KEYCLOAK_CLIENT_ID?.trim() || "admin-cli",
+      clientSecret: process.env.PORTAL_BACKEND_KEYCLOAK_CLIENT_SECRET?.trim() || undefined,
       username,
       password,
       allowedScopeIds: process.env.PORTAL_BACKEND_ALLOWED_SCOPE_IDS,

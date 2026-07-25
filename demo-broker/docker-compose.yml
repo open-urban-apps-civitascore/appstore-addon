@@ -1,0 +1,33 @@
+# Demo MQTT broker for the marketplace's "demo data source" preset.
+#
+# Why this exists [live 2026-07-25]: the CIVITAS dev stack has NO in-cluster MQTT
+# broker — civitas-frost runs an HTTP-only FROST image (nothing listens on its
+# :1883), and the public broker.hivemq.com drops connections unpredictably
+# (EOF/32109 client-takeover fights on a shared internet broker). The deployed
+# NiFi ConsumeMQTT then shows a red runtime error on the portal's dataset page.
+#
+# This broker joins the platform dev stack's shared `civitas-network`, so the
+# NiFi flow reaches it as `civitas-mosquitto:1883` — which is what the
+# marketplace demo preset configures (see app/lib/server/portal-backend/mapper.ts,
+# toDatasourceBody). The demo simulator publishes from the host via
+# `localhost:1884` (1884 because the dead frost proxy already squats host 1883).
+#
+# Run:   docker compose -f demo-broker/docker-compose.yml up -d
+# Stop:  docker compose -f demo-broker/docker-compose.yml down
+# Needs: the platform dev stack up first (it creates civitas-network).
+
+services:
+  civitas-mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: civitas-mosquitto
+    # The image ships this anonymous-access config — dev only, no auth.
+    command: mosquitto -c /mosquitto-no-auth.conf
+    ports:
+      - "1884:1883"
+    networks:
+      - civitas-network
+    restart: unless-stopped
+
+networks:
+  civitas-network:
+    external: true

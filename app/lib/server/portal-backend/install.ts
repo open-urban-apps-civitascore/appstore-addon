@@ -13,6 +13,7 @@ import {
   toDatasetBody,
   toDatasinkBody,
   toDatasourceBody,
+  toDatasourcePatchBody,
   toLifecycleStatus,
   toPipelineBody,
   type PipelineWiring,
@@ -262,7 +263,6 @@ export async function installUseCase(
         toDatasourceBody(
           useCase,
           bundle,
-          primaryVersionId,
           opts.dataSource.mode === "own" ? opts.dataSource.config : undefined,
         ),
       );
@@ -275,6 +275,16 @@ export async function installUseCase(
           "/datasources",
           datasource.status,
         ),
+      );
+
+      // Link the released version via PATCH — the create cannot carry it ([live
+      // 2026-07-25]: create-time version lookup 404s; Bruno does create → patch).
+      const datasourcePatch = await d.client.patchDatasource(
+        datasource.id,
+        toDatasourcePatchBody(primaryVersionId),
+      );
+      steps.push(
+        step("link datastructure version", "PATCH", `/datasources/${datasource.id}`, datasourcePatch),
       );
 
       const datasourceRelease = await d.client.releaseDatasource(datasource.id);
@@ -486,7 +496,6 @@ export async function activateInstalledUseCase(
         toDatasourceBody(
           useCase,
           bundle,
-          primaryVersionId,
           opts.dataSource.mode === "own" ? opts.dataSource.config : undefined,
         ),
       );
@@ -501,6 +510,14 @@ export async function activateInstalledUseCase(
           "/datasources",
           datasource.status,
         ),
+      );
+
+      const datasourcePatch = await d.client.patchDatasource(
+        datasource.id,
+        toDatasourcePatchBody(primaryVersionId),
+      );
+      steps.push(
+        step("link datastructure version", "PATCH", `/datasources/${datasource.id}`, datasourcePatch),
       );
 
       const datasourceRelease = await d.client.releaseDatasource(datasource.id);

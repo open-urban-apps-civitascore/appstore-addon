@@ -12,6 +12,7 @@ import {
   toDatasetBody,
   toDatasinkBody,
   toDatasourceBody,
+  toDatasourcePatchBody,
   toDatastructureCreateBody,
   toDatastructureVersionBody,
   toLifecycleStatus,
@@ -75,18 +76,23 @@ describe("mapper — verified portal-backend payload shapes", () => {
     assert.equal(body.model.title, "TreeRecord", "the rest of the schema is untouched");
   });
 
-  test("datasource body: `configuration` (urls/topics/qos) + dataStructureVersionId", () => {
-    const body = toDatasourceBody(USE_CASE, BUNDLE, "v-123") as Record<string, any>;
+  test("datasource body: `configuration` (urls/topics/qos), version NULL at create (linked via PATCH)", () => {
+    const body = toDatasourceBody(USE_CASE, BUNDLE) as Record<string, any>;
     assert.equal(body.connectorType, "MQTT");
-    assert.equal(body.dataStructureVersionId, "v-123");
+    // [live 2026-07-25] create-time version lookup 404s — must be null, then PATCHed.
+    assert.equal(body.dataStructureVersionId, null);
     assert.ok(Array.isArray(body.configuration.urls) && body.configuration.urls.length > 0);
     assert.ok(Array.isArray(body.configuration.topics) && body.configuration.topics.length > 0);
     assert.equal(typeof body.configuration.qos, "number");
     assert.ok(!("config" in body), "the field is `configuration`, not `config`");
   });
 
+  test("datasource patch body carries exactly the version link", () => {
+    assert.deepEqual(toDatasourcePatchBody("v-123"), { dataStructureVersionId: "v-123" });
+  });
+
   test("datasource body: an own-broker override replaces the demo preset", () => {
-    const own = toDatasourceBody(USE_CASE, BUNDLE, "v-123", {
+    const own = toDatasourceBody(USE_CASE, BUNDLE, {
       url: "tcp://broker.stadt.example:1883",
       topic: "stadt/verkehr",
       username: "svc",
@@ -96,10 +102,9 @@ describe("mapper — verified portal-backend payload shapes", () => {
     assert.deepEqual(own.configuration.topics, ["stadt/verkehr"]);
     assert.equal(own.configuration.user, "svc");
     assert.equal(own.configuration.password, "geheim");
-    assert.equal(own.dataStructureVersionId, "v-123");
 
     // Credentials appear ONLY when given — no empty user/password fields.
-    const noCreds = toDatasourceBody(USE_CASE, BUNDLE, "v-123", {
+    const noCreds = toDatasourceBody(USE_CASE, BUNDLE, {
       url: "tcp://b:1883",
       topic: "t",
     }) as Record<string, any>;
