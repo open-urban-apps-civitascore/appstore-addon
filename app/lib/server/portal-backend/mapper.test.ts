@@ -7,6 +7,8 @@ import {
   buildInstallPlan,
   readDatasetState,
   readSinkType,
+  readUrnPin,
+  toCorePipelineModel,
   toDatasetBody,
   toDatasinkBody,
   toDatasourceBody,
@@ -14,12 +16,21 @@ import {
   toDatastructureVersionBody,
   toLifecycleStatus,
   toPipelineBody,
+  type PipelineWiring,
 } from "@/lib/server/portal-backend/mapper";
 import type { UseCase } from "@/types/use-cases";
 
 const DS_REF = "urn:core:platform:civitas:datastructure:demo:TreeRecord:1.2.0";
 
 const USE_CASE = { id: "baumkataster-starter" } as UseCase;
+
+// The instance wiring an install captures: portal UUIDs + minted URN pins.
+const WIRING: PipelineWiring = {
+  dataSourceId: "src-1",
+  dataSinkId: "sink-1",
+  dataSourceConfigUrn: "urn:core:tenant:civitas:datasource:mock:src-1:0000000001:1.0.0",
+  dataSinkConfigUrn: "urn:core:tenant:civitas:datasink:mock:sink-1:0000000002:1.0.0",
+};
 
 const BUNDLE: UseCaseBundle = {
   dataset: {
@@ -33,7 +44,9 @@ const BUNDLE: UseCaseBundle = {
   source: { repoUrl: "https://gitlab.com/example/baumkataster", gitIdentifier: "v1.0.0" },
 };
 
-// Shapes below were verified against a live portal-backend on 2026-07-14.
+// Shapes below mirror the Model-Forge-integrated backend's Bruno contract
+// (MR !694, read 2026-07-25); pre-!694 facts that survive were live-verified
+// on 2026-07-14. Live verification against the !694 stack is pending (Phase 0).
 describe("mapper — verified portal-backend payload shapes", () => {
   test("datastructure create body: name + explicit createdFromDataSource, no urn/title", () => {
     const body = toDatastructureCreateBody(BUNDLE.elements[0]);
@@ -44,7 +57,7 @@ describe("mapper — verified portal-backend payload shapes", () => {
     assert.ok(!("title" in body), "no title field — the backend has none");
   });
 
-  test("version body: source OWN, version from URN, schema under `model`", () => {
+  test("version body: source OWN, version from URN, schema under `model`, empty styles", () => {
     const body = toDatastructureVersionBody(BUNDLE.elements[0]);
     assert.equal(body.dataStructureVersionSource, "OWN");
     assert.equal(body.version, "1.2.0");
@@ -52,6 +65,8 @@ describe("mapper — verified portal-backend payload shapes", () => {
     const { $id: _bundleUrn, ...schemaWithoutId } = BUNDLE.elements[0].schema;
     assert.deepEqual(body.model, schemaWithoutId);
     assert.ok(!("schema" in body), "the JSON schema field is `model`, not `schema`");
+    // !694: the version body carries the structure editor's canvas state.
+    assert.deepEqual(body.styles, {});
   });
 
   test("strips the bundle $id from the model — release validates $id against the server UUID", () => {
@@ -93,12 +108,16 @@ describe("mapper — verified portal-backend payload shapes", () => {
   });
 
   test("dataset body: no datastructure refs, non-blank description (stage requires it)", () => {
-    const body = toDatasetBody(BUNDLE);
+    const body = toDatasetBody(BUNDLE) as Record<string, unknown>;
     assert.equal(body.name, "Baumkataster Starter");
     assert.equal(body.description, "Demo dataset.");
     assert.equal(body.openDataAccess, false);
     assert.ok(!("datastructureRefs" in body), "the dataset does not reference datastructures");
     assert.ok(!("version" in body), "the dataset input carries no version");
+    // !694: the dataset declares its serving API — STA, matching the FROST sink.
+    assert.deepEqual(body.namedApis, [
+      { name: "Things", slug: "things", standard: "STA", version: "1.1" },
+    ]);
 
     const noDescription = toDatasetBody({
       ...BUNDLE,
@@ -107,14 +126,14 @@ describe("mapper — verified portal-backend payload shapes", () => {
     assert.equal(noDescription.description, "Baumkataster Starter", "falls back to the title");
   });
 
-  test("datasink body: dataSinkType FROST + configuration.dataStructureVersionId", () => {
-    const body = toDatasinkBody("v-123") as Record<string, any>;
+  test("datasink body: dataSinkType FROST + EMPTY configuration (!694 — schema comes via the graph)", () => {
+    const body = toDatasinkBody() as Record<string, any>;
     assert.equal(body.dataSinkType, "FROST");
-    assert.deepEqual(body.configuration, { dataStructureVersionId: "v-123" });
+    assert.deepEqual(body.configuration, {});
   });
 
   test("pipeline body: dataSourceIds + dataSinkIds arrays and a model object", () => {
-    const body = toPipelineBody(BUNDLE, "src-1", "sink-1") as Record<string, any>;
+    const body = toPipelineBody(BUNDLE, WIRING) as Record<string, any>;
     assert.deepEqual(body.dataSourceIds, ["src-1"]);
     assert.deepEqual(body.dataSinkIds, ["sink-1"]);
     assert.equal(typeof body.model, "object");
@@ -231,30 +250,88 @@ describe("mapper — pipeline model binding", () => {
   });
 
   test("toDatasinkBody honours the sink type", () => {
-    assert.equal((toDatasinkBody("v", "POSTGIS") as Record<string, unknown>).dataSinkType, "POSTGIS");
-    assert.equal((toDatasinkBody("v") as Record<string, unknown>).dataSinkType, "FROST");
+    assert.equal((toDatasinkBody("POSTGIS") as Record<string, unknown>).dataSinkType, "POSTGIS");
+    assert.equal((toDatasinkBody() as Record<string, unknown>).dataSinkType, "FROST");
+  });
+});
+
+// !694: the POSTed `model` is the CORE `kind` graph (URN refs); the React-Flow
+// editor state goes in `styles` (entityId-rebound). Mirrors the Bruno "create pipeline" saga step.
+describe("mapper — CORE pipeline model (!694)", () => {
+  test("toCorePipelineModel maps editor types to kinds and attaches URN refs", () => {
+    const model = toCorePipelineModel(PIPELINE_MODEL, WIRING) as {
+      nodes: Record<string, unknown>[];
+      edges: Record<string, unknown>[];
+    };
+    const byKind = (k: string) => model.nodes.filter((n) => n.kind === k);
+    assert.deepEqual(
+      model.nodes.map((n) => n.kind),
+      ["start", "source", "sink", "end"],
+    );
+    assert.equal(byKind("source")[0].sourceRef, WIRING.dataSourceConfigUrn);
+    assert.equal(byKind("sink")[0].sinkRef, WIRING.dataSinkConfigUrn);
+    assert.ok(!("sourceRef" in byKind("start")[0]), "refs only on source/sink nodes");
+    // node ids survive so edges keep resolving; labels + positions carry over
+    assert.equal(byKind("source")[0].id, "n-src");
+    assert.equal(byKind("source")[0].label, "DataSource");
+    assert.deepEqual(byKind("source")[0]["x-ui-position"], { x: 1, y: 0 });
+    // edges reduce to {id, source, target} — editor presentation stays in styles
+    assert.deepEqual(model.edges[0], { id: "e1", source: "n-start", target: "n-src" });
+    assert.equal(model.edges.length, 3);
   });
 
-  test("toPipelineBody uses the bundled model (rebound) in BOTH model and styles", () => {
-    const body = toPipelineBody({ ...BUNDLE, pipeline: PIPELINE_MODEL }, "src-9", "sink-9") as {
-      model: { nodes: { type: string; data: Record<string, unknown> }[] };
+  test("toCorePipelineModel maps a geoPersistence node to a sink with sinkRef", () => {
+    const model = toCorePipelineModel(
+      { nodes: [{ id: "k", type: "geoPersistence", data: {} }], edges: [] },
+      WIRING,
+    ) as { nodes: Record<string, unknown>[] };
+    assert.equal(model.nodes[0].kind, "sink");
+    assert.equal(model.nodes[0].sinkRef, WIRING.dataSinkConfigUrn);
+  });
+
+  test("toCorePipelineModel throws on mapping nodes (needs a Mapping artifact) and unknown types", () => {
+    assert.throws(
+      () =>
+        toCorePipelineModel({ nodes: [{ id: "m", type: "mapping", data: {} }], edges: [] }, WIRING),
+      /mapping node/,
+    );
+    assert.throws(
+      () => toCorePipelineModel({ nodes: [{ id: "x", type: "warp" }], edges: [] }, WIRING),
+      /cannot convert/,
+    );
+  });
+
+  test("toPipelineBody: CORE graph in `model`, entityId-rebound editor graph in `styles`", () => {
+    const body = toPipelineBody({ ...BUNDLE, pipeline: PIPELINE_MODEL }, WIRING) as {
+      model: { nodes: { kind: string; sourceRef?: string; sinkRef?: string }[] };
       styles: { nodes: { type: string; data: Record<string, unknown> }[] };
       dataSourceIds: string[];
       dataSinkIds: string[];
     };
-    assert.notDeepEqual(body.model, {}, "not the empty placeholder");
-    const byType = (t: string) => body.model.nodes.find((n) => n.type === t)!;
-    assert.equal(byType("dataSource").data.entityId, "src-9");
-    assert.equal(byType("frost").data.entityId, "sink-9");
-    assert.deepEqual(body.dataSourceIds, ["src-9"]);
-    assert.deepEqual(body.dataSinkIds, ["sink-9"]);
-    // `styles` must carry the same graph — the editor renders from `styles`, not `model`
-    assert.deepEqual(body.styles, body.model);
+    // model = CORE graph wired by URN
+    assert.equal(body.model.nodes.find((n) => n.kind === "source")?.sourceRef, WIRING.dataSourceConfigUrn);
+    assert.equal(body.model.nodes.find((n) => n.kind === "sink")?.sinkRef, WIRING.dataSinkConfigUrn);
+    // styles = the editor graph, source/sink entityIds rebound to the portal UUIDs
+    const styleByType = (t: string) => body.styles.nodes.find((n) => n.type === t)!;
+    assert.equal(styleByType("dataSource").data.entityId, "src-1");
+    assert.equal(styleByType("frost").data.entityId, "sink-1");
+    assert.deepEqual(body.dataSourceIds, ["src-1"]);
+    assert.deepEqual(body.dataSinkIds, ["sink-1"]);
   });
 
   test("toPipelineBody sends an empty model+styles when no pipeline is bundled (back-compat)", () => {
-    const body = toPipelineBody(BUNDLE, "s", "d") as Record<string, unknown>;
+    const body = toPipelineBody(BUNDLE, WIRING) as Record<string, unknown>;
     assert.deepEqual(body.model, {});
     assert.deepEqual(body.styles, {});
+  });
+
+  test("readUrnPin extracts urn-shaped pins and rejects everything else", () => {
+    assert.equal(
+      readUrnPin({ configurationUrn: "urn:core:tenant:civitas:datasource:d:n:0000000001:1.0.0" }, "configurationUrn"),
+      "urn:core:tenant:civitas:datasource:d:n:0000000001:1.0.0",
+    );
+    assert.equal(readUrnPin({ configurationUrn: "not-a-urn" }, "configurationUrn"), undefined);
+    assert.equal(readUrnPin({}, "configurationUrn"), undefined);
+    assert.equal(readUrnPin(null, "configurationUrn"), undefined);
   });
 });

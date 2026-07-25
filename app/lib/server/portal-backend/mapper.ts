@@ -6,31 +6,45 @@ import type { DatasetLifecycleStatus, UseCase } from "@/types/use-cases";
 /**
  * CORE-IR → portal-backend payload mapper.
  *
- * Every request-body shape below was **verified live against a running
- * CivitasCore v2 portal-backend on 2026-07-14** (see the meta-repo spike doc
- * `2026-07-13-portal-backend-install-spike.md`, "Update (2026-07-14)"), replacing
- * the earlier guesses. Key facts baked in here:
+ * Contract target: the **Model-Forge-integrated portal-backend** (MR !694,
+ * `feat/integrate-model-forge`). Every request-body shape below mirrors the
+ * branch's executable Bruno contract (`api/portal-backend/bruno-api/
+ * dataset-saga-postgis` + `dataset-saga-workflow`, read 2026-07-25); live
+ * verification against the branch dev stack is still pending (Phase 0 of the
+ * migration plan, meta-repo note `2026-07-25-mr694-code-verification-and-
+ * migration-plan.md`). Facts from the 2026-07-14 live spike the branch keeps:
  *
  *  - a DataStructure carries no URN/title fields; the JSON Schema goes on the
  *    *version* as `model` (+ `dataStructureVersionSource: "OWN"`);
  *  - `createdFromDataSource: false` must be sent explicitly — omitting it lets the
  *    DTO's null overwrite the entity default and the insert dies with a DB
  *    NOT_NULL violation (400), although OpenAPI does not mark it required;
- *  - the DataSet does NOT reference datastructures; the graph is wired via
- *    `DataSource.dataStructureVersionId`, `Pipeline.dataSourceIds/dataSinkIds`
- *    and the FROST sink's `configuration.dataStructureVersionId`;
- *  - datasource `configuration` (MQTT) = `urls[]`, `topics[]`, `qos` — strictly
- *    validated only in the backend's OnRelease group;
+ *  - datasource `configuration` (MQTT) = `urls[]`, `topics[]`, `qos`;
  *  - a dataset needs a non-blank `description`, or `stage` rejects it.
+ *
+ * What changed with !694 (URN-native CORE artifacts):
+ *
+ *  - create responses return server-minted **CORE URN pins** in the body
+ *    (`modelUrn` on a datastructure version, `configurationUrn` on
+ *    datasource/datasink). URNs are never hand-constructed (the new grammar has
+ *    a server-derived disambiguator segment) — always read back and thread on;
+ *  - the pipeline `model` is the CORE `kind` graph (nodes `start`/`source`/
+ *    `mapping`/`sink`/`end` referencing resources by `sourceRef`/`sinkRef`/
+ *    `mappingRef` URNs); the React-Flow editor state moved to `styles`, which
+ *    still carries portal-UUID `entityId`s — Bruno sends both representations;
+ *  - a FROST sink's `configuration` is **empty** `{}` (the saga resolves the
+ *    schema through the graph); POSTGIS takes `{tableName, element: <modelUrn>}`;
+ *  - the dataset declares its serving APIs via `namedApis` (STA for FROST).
  *
  * Source of truth = the use case's CORE-IR bundle (`fetchUseCaseBundle`): a dataset
  * manifest, one JSON Schema per datastructure element, and — optionally — a
- * pipeline flow graph (`core-ir/pipeline.json`, re-bound to this instance here).
- * The bundle does not (yet) carry a datasource config, so that stays a
- * clearly-marked placeholder (`TODO(content)`). When no pipeline is bundled the
- * model is an empty placeholder, so the release saga's NiFi step rejects it
- * ("pipeline graph has no datasource node") and compensates — the install lands on
- * READY, not AVAILABLE, until real content arrives in the bundle.
+ * pipeline flow graph (`core-ir/pipeline.json`, still the React-Flow editor
+ * shape; converted to the CORE graph here, kept entityId-rebound as `styles`).
+ * When no pipeline is bundled the model is an empty placeholder, so the release
+ * saga's NiFi step rejects it and compensates — the install lands on READY, not
+ * AVAILABLE, until real content arrives in the bundle. (The FROST Bruno flow
+ * proves a mapping-less `source → sink` graph provisions fine, so bundled
+ * graphs without mapping nodes stay valid.)
  */
 
 /** Connector types the portal-backend's datasource endpoint accepts. */
@@ -63,7 +77,7 @@ export interface PortalBackendInstallPlan {
   };
 }
 
-/** `POST /datastructures` body for one CORE-IR element. [verified 2026-07-14] */
+/** `POST /datastructures` body for one CORE-IR element. [!694 Bruno: dataset-saga-postgis/2] */
 export function toDatastructureCreateBody(
   element: UseCaseBundle["elements"][number],
 ): Record<string, unknown> {
@@ -73,20 +87,23 @@ export function toDatastructureCreateBody(
     description: `Installed by the marketplace from ${element.ref}`,
     // Explicit — omitting it triggers a DB NOT_NULL violation (see module docs).
     createdFromDataSource: false,
+    // Sent empty exactly like the Bruno contract — versions are attached via the
+    // nested endpoint, role assignments are not the marketplace's concern.
+    dataStructureVersionIds: [],
+    assignments: [],
   };
 }
 
 /**
  * `POST /datastructures/{id}/versions` body carrying the JSON Schema.
- * [verified 2026-07-14]
+ * [!694 Bruno: dataset-saga-postgis/2a — response returns the minted `modelUrn` pin]
  *
- * The bundle's `$id` (its CORE URN) is STRIPPED from the model: on version
- * release the backend validates that a present `$id` derives from the
- * server-assigned DataStructure UUID (`DataStructureVersionService.validateModelId`
- * / `CoreUrn.matchesId`) — a bundle URN can never satisfy that, since the UUID
- * only exists after the create. `$id` is optional, so omitting it skips the
- * check; the bundle URN stays recorded on the install (`provisionedResources`
- * name/version + the catalog ref).
+ * The bundle's `$id` (its CORE URN) is STRIPPED from the model: Model Forge is
+ * the URN authority and mints the canonical `$id`/URN on write (the new grammar
+ * carries a server-derived disambiguator a bundle URN can never guess). The
+ * Bruno contract likewise submits models without `$id`. The bundle URN stays
+ * recorded on the install (`provisionedResources` name/version + the catalog
+ * ref); the minted URN comes back as the response's `modelUrn`.
  */
 export function toDatastructureVersionBody(
   element: UseCaseBundle["elements"][number],
@@ -96,8 +113,11 @@ export function toDatastructureVersionBody(
   return {
     dataStructureVersionSource: "OWN",
     version,
+    description: `Installed by the marketplace from ${element.ref}`,
     modelName: name,
     model,
+    // The structure editor's canvas state — none exists for an imported schema.
+    styles: {},
   };
 }
 
@@ -138,20 +158,29 @@ export function toDatasourceBody(
     description: `Installed by the marketplace for ${useCase.id}`,
     connectorType,
     configuration,
+    // The Bruno flow creates the datasource FIRST (id: null) and PATCHes this in
+    // later, because its structures don't exist yet. The marketplace releases all
+    // structures before this call, so the id is linked inline — same field, same
+    // released-version requirement, one request less. (Fallback if the live run
+    // disagrees: PATCH /datasources/{id} with this field.)
     dataStructureVersionId,
+    assignments: [],
   };
 }
 
 /**
- * `POST /datasets` body (creates the DRAFT). [verified 2026-07-14]
- * The dataset does NOT reference datastructures (that was a pre-spike guess); a
- * non-blank description is REQUIRED or `stage` fails later.
+ * `POST /datasets` body (creates the DRAFT). [!694 Bruno: saga step "create dataset", both variants]
+ * The dataset does NOT reference datastructures; a non-blank description is
+ * REQUIRED or `stage` fails later. `namedApis` declares how the provisioned data
+ * is served through the gateway — the SensorThings API, matching the FROST sink
+ * that is the marketplace's (only) supported storage today.
  */
 export function toDatasetBody(bundle: UseCaseBundle): Record<string, unknown> {
   return {
     name: bundle.dataset.title,
     description: bundle.dataset.description?.trim() || bundle.dataset.title,
     openDataAccess: false,
+    namedApis: [{ name: "Things", slug: "things", standard: "STA", version: "1.1" }],
   };
 }
 
@@ -160,21 +189,22 @@ export type DatasinkType = "FROST" | "POSTGIS";
 
 /**
  * `POST /datasets/{id}/datasinks` body.
- * A FROST sink's whole configuration is the datastructure *version* it persists
- * (verified live 2026-07-14). A POSTGIS sink additionally needs a non-blank
- * `tableName` (backend `PostgisConfiguration`, enforced by the NiFi
- * `PostgisSinkStage`), carried on the pipeline's `geoPersistence` node — not yet
- * plumbed through, so the orchestrator rejects POSTGIS sinks upfront (see
+ * [!694 Bruno: dataset-saga-workflow/4c (FROST) + dataset-saga-postgis/6 (POSTGIS)]
+ *
+ * A FROST sink's configuration is now EMPTY — the saga resolves the persisted
+ * schema through the pipeline graph's refs (pre-!694 it carried
+ * `dataStructureVersionId`). A POSTGIS sink takes `{tableName, element}` where
+ * `element` is a datastructure version's minted `modelUrn`; the bundle carries
+ * no `tableName` yet, so the orchestrator still rejects POSTGIS upfront (see
  * install.ts). The type comes from the bundle's pipeline sink node (via
  * {@link readSinkType}); FROST is the default when no pipeline is bundled.
+ * The response returns the sink's minted `configurationUrn` pin — the pipeline
+ * graph's `sinkRef`.
  */
-export function toDatasinkBody(
-  dataStructureVersionId: string,
-  sinkType: DatasinkType = "FROST",
-): Record<string, unknown> {
+export function toDatasinkBody(sinkType: DatasinkType = "FROST"): Record<string, unknown> {
   return {
     dataSinkType: sinkType,
-    configuration: { dataStructureVersionId },
+    configuration: {},
   };
 }
 
@@ -233,35 +263,146 @@ export function readSinkType(pipeline: Record<string, unknown> | undefined): Dat
 }
 
 /**
- * `POST /datasets/{id}/pipelines` body. Shape verified 2026-07-14:
+ * Everything the pipeline body needs to wire the graph to THIS instance's
+ * freshly created resources: the portal UUIDs (for `dataSourceIds`/`dataSinkIds`
+ * and the `styles` entityIds) and the minted CORE URN pins (for the model's
+ * `sourceRef`/`sinkRef`).
+ */
+export interface PipelineWiring {
+  dataSourceId: string;
+  dataSinkId: string;
+  /** The datasource's minted `configurationUrn` (create-response pin). */
+  dataSourceConfigUrn: string;
+  /** The datasink's minted `configurationUrn` (create-response pin). */
+  dataSinkConfigUrn: string;
+}
+
+// React-Flow editor node `type` → CORE graph node `kind`. The editor vocabulary
+// is what bundles carry (`core-ir/pipeline.json`); the CORE vocabulary is what
+// the config-adapter deploys (NodeKind: start/end/cron/source/mapping/sink).
+const RF_TYPE_TO_CORE_KIND: Record<string, string> = {
+  start: "start",
+  end: "end",
+  cron: "cron",
+  dataSource: "source",
+  frost: "sink",
+  geoPersistence: "sink",
+};
+
+/**
+ * Convert a bundled React-Flow pipeline graph to the CORE `kind` graph the
+ * !694 backend stores and the config-adapter provisions from
+ * [Bruno: saga step "create pipeline", both variants]:
+ *
+ *   - node `type` maps to `kind` ({@link RF_TYPE_TO_CORE_KIND}); `source` nodes
+ *     get `sourceRef` = the datasource's `configurationUrn`, `sink` nodes get
+ *     `sinkRef` = the datasink's `configurationUrn` (URN refs replace the old
+ *     `data.entityId` UUID rebinding);
+ *   - labels and positions carry over (`label`, `x-ui-position`);
+ *   - edges reduce to `{id, source, target}` — the editor's `type: "smoothstep"`
+ *     etc. is presentation, which lives in `styles`.
+ *
+ * A bundled `mapping` node would need a first-class Mapping artifact created via
+ * `POST /mappings` for its `mappingRef` — no bundle carries one yet (the format
+ * gains mapping documents in Phase 2 of the migration plan), so it throws
+ * loudly instead of posting a graph the saga cannot resolve. Unknown node types
+ * throw for the same reason.
+ */
+export function toCorePipelineModel(
+  model: Record<string, unknown>,
+  wiring: PipelineWiring,
+): Record<string, unknown> {
+  const rfNodes = Array.isArray(model.nodes) ? model.nodes : [];
+  const rfEdges = Array.isArray(model.edges) ? model.edges : [];
+
+  const nodes = rfNodes.map((rfNode) => {
+    const rf = rfNode as {
+      id?: unknown;
+      type?: unknown;
+      position?: { x?: unknown; y?: unknown };
+      data?: { label?: unknown };
+    };
+    const id = typeof rf.id === "string" ? rf.id : "";
+    const type = typeof rf.type === "string" ? rf.type : "";
+    if (type === "mapping") {
+      throw new Error(
+        "The bundled pipeline contains a mapping node, which the marketplace cannot install yet (it requires creating a first-class Mapping artifact for its mappingRef). Remove the mapping node or wait for mapping-document bundle support.",
+      );
+    }
+    const kind = RF_TYPE_TO_CORE_KIND[type];
+    if (!id || !kind) {
+      throw new Error(
+        `The bundled pipeline contains a node the marketplace cannot convert to the CORE graph (id: ${id || "?"}, type: ${type || "?"}).`,
+      );
+    }
+
+    const node: Record<string, unknown> = { id, kind };
+    const label = rf.data?.label;
+    if (typeof label === "string" && label) node.label = label;
+    if (typeof rf.position?.x === "number" && typeof rf.position?.y === "number") {
+      node["x-ui-position"] = { x: rf.position.x, y: rf.position.y };
+    }
+    if (kind === "source") node.sourceRef = wiring.dataSourceConfigUrn;
+    if (kind === "sink") node.sinkRef = wiring.dataSinkConfigUrn;
+    return node;
+  });
+
+  const edges = rfEdges.map((rfEdge) => {
+    const rf = rfEdge as { id?: unknown; source?: unknown; target?: unknown };
+    if (
+      typeof rf.id !== "string" ||
+      typeof rf.source !== "string" ||
+      typeof rf.target !== "string"
+    ) {
+      throw new Error("The bundled pipeline contains an edge without id/source/target.");
+    }
+    return { id: rf.id, source: rf.source, target: rf.target };
+  });
+
+  return { nodes, edges };
+}
+
+/**
+ * `POST /datasets/{id}/pipelines` body. [!694 Bruno: saga step "create pipeline", both variants]
  * `dataSourceIds` must reference AVAILABLE (released) datasources; datasinks have
  * NO release lifecycle — the sink merely has to be created before the pipeline so
  * its id exists for `dataSinkIds`.
  *
- * The flow graph (roles SOURCE/TRANSFORM/SINK, edges, optional cron trigger — see
- * FlowPath.derive) is stored in **two** fields, and the portal writes both on save
- * (verified 2026-07-14): `model` is what the config-adapter (NiFi) provisions from;
- * `styles` is what the pipeline EDITOR reads to render the canvas — it *ignores*
- * `model` (`createSessionFromBackendDTO` reads `dto.styles`). Set only `model` and
- * the pipeline provisions fine but shows an EMPTY editor. When the bundle carries a
- * graph, its source/sink `entityId`s are re-bound to this instance's created ids
- * ({@link bindPipelineModel}); otherwise an empty graph is sent, which the NiFi
- * step rejects → the saga compensates to READY.
+ * The flow graph is stored in **two** representations, and Bruno sends both:
+ * `model` is the CORE `kind` graph the config-adapter (NiFi) provisions from —
+ * resources referenced by URN ({@link toCorePipelineModel}); `styles` is the
+ * React-Flow editor state the portal pipeline editor renders — still keyed by
+ * portal UUIDs, so the bundle graph goes in entityId-rebound
+ * ({@link bindPipelineModel}), exactly like the old dual-field contract. When no
+ * pipeline is bundled an empty graph is sent, which the NiFi step rejects → the
+ * saga compensates to READY (unchanged semantics).
  */
 export function toPipelineBody(
   bundle: UseCaseBundle,
-  dataSourceId: string,
-  dataSinkId: string,
+  wiring: PipelineWiring,
 ): Record<string, unknown> {
-  const graph = bundle.pipeline ? bindPipelineModel(bundle.pipeline, dataSourceId, dataSinkId) : {};
   return {
     name: `${bundle.dataset.title} – Pipeline`,
     description: `Installed by the marketplace`,
-    model: graph, // provisioned by the config-adapter (NiFi) at release
-    styles: graph, // read by the portal pipeline editor to render the canvas
-    dataSourceIds: [dataSourceId],
-    dataSinkIds: [dataSinkId],
+    model: bundle.pipeline ? toCorePipelineModel(bundle.pipeline, wiring) : {},
+    styles: bundle.pipeline
+      ? bindPipelineModel(bundle.pipeline, wiring.dataSourceId, wiring.dataSinkId)
+      : {},
+    dataSourceIds: [wiring.dataSourceId],
+    dataSinkIds: [wiring.dataSinkId],
   };
+}
+
+/**
+ * Read a server-minted CORE URN pin (`modelUrn`, `configurationUrn`, …) off a
+ * create-response body. Returns undefined when absent — which, for fields the
+ * !694 contract guarantees, means the backend on the other side is pre-!694
+ * (the caller decides whether that is fatal).
+ */
+export function readUrnPin(body: unknown, field: string): string | undefined {
+  if (!body || typeof body !== "object") return undefined;
+  const value = (body as Record<string, unknown>)[field];
+  return typeof value === "string" && value.startsWith("urn:") ? value : undefined;
 }
 
 /** Build the static install plan from a use case's CORE-IR bundle. */

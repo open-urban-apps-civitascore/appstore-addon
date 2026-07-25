@@ -109,6 +109,13 @@ export const provisioningTraceSchema = z.object({
 // Persisted so uninstall can run the verified bottom-up delete cascade
 // (pipeline → datasink → dataset → datasource → datastructures) — references
 // block deletion hard (400/409), so each id must be removed individually.
+//
+// Since the Model-Forge-integrated backend (MR !694) the create responses also
+// carry server-minted CORE URN pins (`modelUrn` on a datastructure version,
+// `configurationUrn` on datasource/datasink). The pipeline's CORE graph
+// references resources by these URNs, so they are captured alongside the ids.
+// All pin fields are optional: records written against the pre-!694 backend
+// (and legacy records) parse unchanged.
 export const provisionedResourcesSchema = z.object({
   dataStructures: z.array(
     z.object({
@@ -116,10 +123,13 @@ export const provisionedResourcesSchema = z.object({
       versionId: z.string(),
       name: z.string(),
       version: z.string(),
+      modelUrn: z.string().optional(),
     }),
   ),
   dataSourceId: z.string().optional(),
+  dataSourceConfigUrn: z.string().optional(),
   dataSinkId: z.string().optional(),
+  dataSinkConfigUrn: z.string().optional(),
   pipelineId: z.string().optional(),
 });
 

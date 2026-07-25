@@ -9,11 +9,13 @@ import {
   buildInstallPlan,
   readDatasetState,
   readSinkType,
+  readUrnPin,
   toDatasetBody,
   toDatasinkBody,
   toDatasourceBody,
   toLifecycleStatus,
   toPipelineBody,
+  type PipelineWiring,
 } from "@/lib/server/portal-backend/mapper";
 import {
   DEFAULT_ACTIVATION_OPTIONS,
@@ -35,9 +37,13 @@ import {
  * portal-backend call sequence and DataSet lifecycle that provision a *running* use
  * case (FROST project, APISIX routes, NiFi pipeline).
  *
- * The sequence below was **verified live on 2026-07-14** (meta-repo spike doc,
- * "Update (2026-07-14)"). The backend enforces a *release cascade* — an entity may
- * only be linked once it is AVAILABLE — so creates and releases interleave:
+ * The sequence was verified live on 2026-07-14 and re-aligned with the
+ * Model-Forge-integrated backend's Bruno contract (MR !694) on 2026-07-25 — the
+ * skeleton is unchanged; what's new is that create responses return server-minted
+ * CORE URN pins (`modelUrn`, `configurationUrn`) which are captured here and
+ * wired into the pipeline's CORE graph (`sourceRef`/`sinkRef`). The backend
+ * enforces a *release cascade* — an entity may only be linked once it is
+ * AVAILABLE — so creates and releases interleave:
  *
  *   for each datastructure: create → create version → release version → release structure
  *   → create datasource (links the released version) → release datasource
@@ -109,6 +115,41 @@ function step(label: string, method: string, path: string, status: number): Prov
   return { label, method, path, status };
 }
 
+/**
+ * Assemble the pipeline wiring from the resources created so far. When the
+ * bundle carries a flow graph, the CORE model must reference the datasource and
+ * datasink by their minted `configurationUrn` pins — a backend that returns no
+ * pins is pre-!694 (standalone-era portal-backend) and cannot satisfy this
+ * marketplace version's pipeline contract, so fail fast with a clear message
+ * instead of posting a graph whose refs the saga cannot resolve.
+ */
+function pipelineWiring(
+  useCaseId: string,
+  bundle: UseCaseBundle,
+  resources: ProvisionedResources,
+): PipelineWiring {
+  const { dataSourceId, dataSourceConfigUrn, dataSinkId, dataSinkConfigUrn } = resources;
+  if (!dataSourceId || !dataSinkId) {
+    // Internal ordering violation — the orchestrator always creates both first.
+    throw new PortalBackendError(
+      `Install of ${useCaseId}: pipeline requested before datasource/datasink exist.`,
+      500,
+    );
+  }
+  if (bundle.pipeline && (!dataSourceConfigUrn || !dataSinkConfigUrn)) {
+    throw new PortalBackendError(
+      `The portal-backend returned no configurationUrn pins while installing ${useCaseId}. Installing a bundled pipeline requires the Model-Forge-integrated portal-backend (MR !694, feat/integrate-model-forge) — this backend looks older.`,
+      502,
+    );
+  }
+  return {
+    dataSourceId,
+    dataSinkId,
+    dataSourceConfigUrn: dataSourceConfigUrn ?? "",
+    dataSinkConfigUrn: dataSinkConfigUrn ?? "",
+  };
+}
+
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -171,7 +212,14 @@ export async function installUseCase(
         step(`datastructure version ${ds.name}@${ds.version}`, "POST", `/datastructures/${created.id}/versions`, version.status),
       );
       // Track as soon as both ids exist — a failure below must clean this up too.
-      partial.dataStructures.push({ id: created.id, versionId: version.id, name: ds.name, version: ds.version });
+      // The minted modelUrn pin rides along (absent on a pre-!694 backend).
+      partial.dataStructures.push({
+        id: created.id,
+        versionId: version.id,
+        name: ds.name,
+        version: ds.version,
+        modelUrn: readUrnPin(version.body, "modelUrn"),
+      });
 
       const versionRelease = await d.client.releaseDatastructureVersion(created.id, version.id);
       steps.push(
@@ -219,6 +267,7 @@ export async function installUseCase(
         ),
       );
       partial.dataSourceId = datasource.id;
+      partial.dataSourceConfigUrn = readUrnPin(datasource.body, "configurationUrn");
       steps.push(
         step(
           opts.dataSource.mode === "own" ? "datasource (own broker)" : "datasource (demo preset)",
@@ -249,16 +298,14 @@ export async function installUseCase(
           501,
         );
       }
-      const datasink = await d.client.createDatasink(
-        datasetId,
-        toDatasinkBody(primaryVersionId, sinkType),
-      );
+      const datasink = await d.client.createDatasink(datasetId, toDatasinkBody(sinkType));
       partial.dataSinkId = datasink.id;
+      partial.dataSinkConfigUrn = readUrnPin(datasink.body, "configurationUrn");
       steps.push(step(`datasink (${sinkType})`, "POST", `/datasets/${datasetId}/datasinks`, datasink.status));
 
       const pipeline = await d.client.createPipeline(
         datasetId,
-        toPipelineBody(bundle, datasource.id, datasink.id),
+        toPipelineBody(bundle, pipelineWiring(useCase.id, bundle, partial)),
       );
       partial.pipelineId = pipeline.id;
       steps.push(step("pipeline", "POST", `/datasets/${datasetId}/pipelines`, pipeline.status));
@@ -444,6 +491,7 @@ export async function activateInstalledUseCase(
         ),
       );
       resources.dataSourceId = datasource.id;
+      resources.dataSourceConfigUrn = readUrnPin(datasource.body, "configurationUrn");
       steps.push(
         step(
           opts.dataSource.mode === "own"
@@ -465,13 +513,14 @@ export async function activateInstalledUseCase(
           501,
         );
       }
-      const datasink = await d.client.createDatasink(record.id, toDatasinkBody(primaryVersionId, sinkType));
+      const datasink = await d.client.createDatasink(record.id, toDatasinkBody(sinkType));
       resources.dataSinkId = datasink.id;
+      resources.dataSinkConfigUrn = readUrnPin(datasink.body, "configurationUrn");
       steps.push(step(`datasink (${sinkType})`, "POST", `/datasets/${record.id}/datasinks`, datasink.status));
 
       const pipeline = await d.client.createPipeline(
         record.id,
-        toPipelineBody(bundle, datasource.id, datasink.id),
+        toPipelineBody(bundle, pipelineWiring(useCase.id, bundle, resources)),
       );
       resources.pipelineId = pipeline.id;
       steps.push(step("pipeline", "POST", `/datasets/${record.id}/pipelines`, pipeline.status));
@@ -488,9 +537,11 @@ export async function activateInstalledUseCase(
     }
   } else {
     // READY: the graph exists (stage-for-review or a compensated saga) — keep
-    // whatever child ids the record already carries.
+    // whatever child ids (and URN pins) the record already carries.
     resources.dataSourceId = record.provisionedResources?.dataSourceId;
+    resources.dataSourceConfigUrn = record.provisionedResources?.dataSourceConfigUrn;
     resources.dataSinkId = record.provisionedResources?.dataSinkId;
+    resources.dataSinkConfigUrn = record.provisionedResources?.dataSinkConfigUrn;
     resources.pipelineId = record.provisionedResources?.pipelineId;
   }
 

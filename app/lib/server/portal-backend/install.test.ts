@@ -124,10 +124,13 @@ function handle(req: IncomingMessage, res: ServerResponse, body: string): void {
     body: body ? JSON.parse(body) : undefined,
   });
 
-  const created = (location: string) => {
+  const created = (location: string, pins?: Record<string, unknown>) => {
     res.writeHead(201, { "Content-Type": "application/json", Location: location });
-    res.end(JSON.stringify({ id: location.split("/").filter(Boolean).at(-1) }));
+    res.end(JSON.stringify({ id: location.split("/").filter(Boolean).at(-1), ...pins }));
   };
+  // Server-minted CORE URN pin, as the !694 backend returns on create responses.
+  const mintUrn = (artifactType: string, id: string) =>
+    `urn:core:tenant:civitas:${artifactType}:test:${id}:0000000000:1.0.0`;
   const status = (code: number, payload?: unknown) => {
     res.writeHead(code, payload ? { "Content-Type": "application/json" } : undefined);
     res.end(payload ? JSON.stringify(payload) : undefined);
@@ -139,14 +142,23 @@ function handle(req: IncomingMessage, res: ServerResponse, body: string): void {
 
   if (method === "POST") {
     if (path === "/datastructures") return created(`/datastructures/${nextId("ds")}`);
-    if (/^\/datastructures\/[^/]+\/versions$/.test(path)) return created(`${path}/${nextId("v")}`);
+    if (/^\/datastructures\/[^/]+\/versions$/.test(path)) {
+      const versionId = nextId("v");
+      return created(`${path}/${versionId}`, { modelUrn: mintUrn("datastructure", versionId) });
+    }
     if (/^\/datastructures\/[^/]+\/versions\/[^/]+\/release$/.test(path)) return status(200);
     if (/^\/datastructures\/[^/]+\/(release|unrelease)$/.test(path)) return status(200);
-    if (path === "/datasources") return created(`/datasources/${nextId("src")}`);
+    if (path === "/datasources") {
+      const sourceId = nextId("src");
+      return created(`/datasources/${sourceId}`, { configurationUrn: mintUrn("datasource", sourceId) });
+    }
     if (/^\/datasources\/[^/]+\/(release|unrelease)$/.test(path)) return status(200);
     if (path === "/datasets") return created(`/datasets/${nextId("set")}`);
     if (/^\/datasets\/[^/]+\/pipelines$/.test(path)) return created(`${path}/${nextId("pipe")}`);
-    if (/^\/datasets\/[^/]+\/datasinks$/.test(path)) return created(`${path}/${nextId("sink")}`);
+    if (/^\/datasets\/[^/]+\/datasinks$/.test(path)) {
+      const sinkId = nextId("sink");
+      return created(`${path}/${sinkId}`, { configurationUrn: mintUrn("datasink", sinkId) });
+    }
     if (/^\/datasets\/[^/]+\/stage$/.test(path)) return status(200);
     if (/^\/datasets\/[^/]+\/unstage$/.test(path)) return status(200);
     if (/^\/datasets\/[^/]+\/release$/.test(path)) return status(config.releaseStatus);
@@ -255,13 +267,13 @@ describe("portal-backend install orchestrator", () => {
     assert.deepEqual(pipelineBody.dataSourceIds, ["src-5"]);
     assert.ok(Array.isArray(pipelineBody.dataSinkIds) && (pipelineBody.dataSinkIds as string[]).length === 1);
 
-    // datasource + FROST sink wire to the LAST element's version (bundle refs are
-    // in dependency order — the top-level record comes last), here v-4
+    // the datasource wires to the LAST element's version (bundle refs are in
+    // dependency order — the top-level record comes last), here v-4; the FROST
+    // sink's configuration is EMPTY under !694 (schema resolved via the graph)
     const datasourceRequest = requests.find((r) => r.method === "POST" && r.path === "/datasources");
     assert.equal((datasourceRequest?.body as Record<string, unknown>).dataStructureVersionId, "v-4");
     const datasinkRequest = requests.find((r) => r.method === "POST" && r.path.endsWith("/datasinks"));
-    const datasinkBody = datasinkRequest?.body as { configuration?: { dataStructureVersionId?: string } };
-    assert.equal(datasinkBody.configuration?.dataStructureVersionId, "v-4");
+    assert.deepEqual((datasinkRequest?.body as { configuration?: object }).configuration, {});
 
     // the record persists everything uninstall needs
     assert.equal(record.source, "portal-backend");
@@ -350,7 +362,7 @@ describe("portal-backend install orchestrator", () => {
     );
   });
 
-  test("install with a bundled pipeline: real model, entityIds rebound to created ids, sink type from model", async () => {
+  test("install with a bundled pipeline: CORE model wired by minted URN pins, styles rebound to created ids", async () => {
     const pipeline = {
       nodes: [
         { id: "n-start", type: "start", data: { label: "Start" } },
@@ -370,19 +382,36 @@ describe("portal-backend install orchestrator", () => {
 
     const pipelineReq = requests.find((r) => r.method === "POST" && r.path.endsWith("/pipelines"));
     const body = pipelineReq?.body as {
-      model: { nodes: { type: string; data: { entityId?: string } }[] };
+      model: { nodes: { kind: string; sourceRef?: string; sinkRef?: string }[] };
+      styles: { nodes: { type: string; data: { entityId?: string } }[] };
       dataSourceIds: string[];
       dataSinkIds: string[];
     };
-    const nodeOf = (t: string) => body.model.nodes.find((n) => n.type === t);
-    // source/sink nodes now carry the CREATED ids the orchestrator linked, NOT the
-    // authoring-instance ids that came in the bundle
-    assert.notEqual(nodeOf("dataSource")?.data.entityId, "AUTHORED-SRC");
-    assert.equal(nodeOf("dataSource")?.data.entityId, body.dataSourceIds[0]);
-    assert.equal(nodeOf("frost")?.data.entityId, body.dataSinkIds[0]);
-    // the datasink was created with the type declared by the model's sink node
+    // model = CORE `kind` graph; source/sink reference the resources by the URN
+    // pins the backend minted on create — never the bundle's authored ids.
+    const modelOf = (k: string) => body.model.nodes.find((n) => n.kind === k);
+    assert.equal(
+      modelOf("source")?.sourceRef,
+      `urn:core:tenant:civitas:datasource:test:${body.dataSourceIds[0]}:0000000000:1.0.0`,
+    );
+    assert.equal(
+      modelOf("sink")?.sinkRef,
+      `urn:core:tenant:civitas:datasink:test:${body.dataSinkIds[0]}:0000000000:1.0.0`,
+    );
+    // styles = the editor graph, entityIds rebound to the created portal UUIDs
+    const styleOf = (t: string) => body.styles.nodes.find((n) => n.type === t);
+    assert.notEqual(styleOf("dataSource")?.data.entityId, "AUTHORED-SRC");
+    assert.equal(styleOf("dataSource")?.data.entityId, body.dataSourceIds[0]);
+    assert.equal(styleOf("frost")?.data.entityId, body.dataSinkIds[0]);
+    // the datasink was created with the type declared by the model's sink node —
+    // and with the !694 EMPTY FROST configuration
     const sinkReq = requests.find((r) => r.method === "POST" && r.path.endsWith("/datasinks"));
     assert.equal((sinkReq?.body as { dataSinkType: string }).dataSinkType, "FROST");
+    assert.deepEqual((sinkReq?.body as { configuration: object }).configuration, {});
+    // the record keeps the pins for future re-wiring (activation, uninstall)
+    const record = await store.get(USE_CASE.id);
+    assert.ok(record?.provisionedResources?.dataSourceConfigUrn?.startsWith("urn:core:"));
+    assert.ok(record?.provisionedResources?.dataSinkConfigUrn?.startsWith("urn:core:"));
   });
 
   test("install rejects a geoPersistence (POSTGIS) sink pipeline — not supported yet — and rolls back", async () => {
