@@ -312,6 +312,18 @@ export async function installUseCase(
         .filter(([, answer]) => answer !== ""),
     );
 
+    // Role bindings chosen in the install wizard (role key → group). Recorded so
+    // the installation view can show who got what; creating the assignments on
+    // the backend is milestone work, not part of this install path.
+    // `?? {}` because callers may hand in a hand-built options object rather than
+    // a schema-parsed one (tests, CLI) — a missing optional axis must behave like
+    // "not chosen", never throw.
+    const assignedRoles = Object.fromEntries(
+      Object.entries(opts.roleAssignments ?? {})
+        .map(([role, group]) => [role, group.trim()])
+        .filter(([, group]) => group !== ""),
+    );
+
     const record = installedUseCaseSchema.parse({
       id: datasetId,
       useCaseId: useCase.id,
@@ -328,6 +340,8 @@ export async function installUseCase(
       createdDataStructures: plan.summary.dataStructures,
       datasetRef: useCase.modelForge,
       installAnswers: Object.keys(answers).length > 0 ? answers : undefined,
+      dataSourceMode: opts.dataSource.mode,
+      roleAssignments: Object.keys(assignedRoles).length > 0 ? assignedRoles : undefined,
       provisioningTrace: { provisionedAt: d.now().toISOString(), steps },
       provisionedResources: partial,
     } satisfies InstalledUseCase);

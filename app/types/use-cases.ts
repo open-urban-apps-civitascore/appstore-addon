@@ -49,6 +49,72 @@ export const requiredBuildingBlockSchema = z.union([
   z.string().transform((name) => ({ kind: "connector" as const, name })),
 ]);
 
+// ── Listing metadata: trust, requirements, provided surfaces, roles ─────────
+// All four blocks are OPTIONAL so catalog entries authored before they existed
+// keep parsing unchanged. They answer the questions a commune asks before
+// installing — who vouches for this, does it fit our instance, what do we get,
+// who may operate it — and are currently rendered from fixture data only: no
+// authoring or curation side fills them yet.
+
+/** Who vouches for this listing — the facts an approval gate asks for. */
+export const trustMetadataSchema = z.object({
+  maintainer: z
+    .object({
+      name: z.string(),
+      contactUrl: z.string().url().optional(),
+    })
+    .optional(),
+  /** Communes running this in production. Clickable when the reference is public. */
+  productionReferences: z
+    .array(
+      z.object({
+        municipality: z.string(),
+        url: z.string().url().optional(),
+        since: z.string().optional(),
+      }),
+    )
+    .default([]),
+  curatedBy: z.string().optional(),
+  curatedAt: z.string().optional(),
+  license: z.string().optional(),
+});
+
+/**
+ * What the use case exposes once it runs — the visible value, not the plumbing.
+ * `urlTemplate` may contain `{datasetId}`, substituted with the portal-backend
+ * dataset id of a concrete installation.
+ */
+export const providedSurfaceSchema = z.object({
+  kind: z.enum(["api", "dashboard", "map", "download"]),
+  label: z.string(),
+  /** Declared API/serving standard, e.g. STA, WMS, WFS (ADR 039 vocabulary). */
+  standard: z.string().optional(),
+  urlTemplate: z.string().optional(),
+  note: z.string().optional(),
+});
+
+/**
+ * Role *definitions* a bundle ships. Bindings (assignments to concrete groups)
+ * are instance-specific and are created by the install wizard — verified against
+ * the portal model on 2026-07-19: `Assignment` binds a concrete group FK, `Role`
+ * is abstract.
+ */
+export const roleDefinitionSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  description: z.string().optional(),
+  permissions: z.array(z.string()).default([]),
+});
+
+/** What the use case needs from the target instance, so the fit can be checked. */
+export const platformRequirementsSchema = z.object({
+  coreVersions: z.array(z.string()).default([]),
+  /** Platform components, e.g. FROST, POSTGIS, GEOSERVER, SUPERSET, NIFI. */
+  components: z.array(z.string()).default([]),
+  /** Connector types the data source needs, e.g. MQTT, SQL, HTTP. */
+  connectors: z.array(z.string()).default([]),
+});
+
 export const useCaseSchema = z.object({
   id: z.string().min(3),
   title: z.string().min(3),
@@ -82,6 +148,12 @@ export const useCaseSchema = z.object({
   }),
   revoked: z.boolean().optional(),
   revokedReason: z.string().optional(),
+
+  // Optional demo-relevant metadata — see the block above.
+  trust: trustMetadataSchema.optional(),
+  provides: z.array(providedSurfaceSchema).default([]),
+  roles: z.array(roleDefinitionSchema).default([]),
+  requirements: platformRequirementsSchema.optional(),
 });
 
 export const useCaseCatalogSchema = z.object({
@@ -148,6 +220,17 @@ export const installedUseCaseSchema = z.object({
   // question text). Free text — never secrets (broker credentials go only into
   // the backend datasource configuration, per D3).
   installAnswers: z.record(z.string(), z.string()).optional(),
+  /**
+   * Which data-source fork the installer chose (D10). Persisted so the installed
+   * view can mark a demo installation as such — "this runs on demo data" is a
+   * statement the UI must be able to make honestly.
+   */
+  dataSourceMode: z.enum(["demo", "own", "later"]).optional(),
+  /**
+   * Role bindings created by the install wizard: role key → group name. The
+   * bundle declares roles; the binding is instance-specific.
+   */
+  roleAssignments: z.record(z.string(), z.string()).optional(),
   provisioningTrace: provisioningTraceSchema.optional(),
   // Absent on records written before the delete-cascade support; uninstall then
   // falls back to removing only the dataset.
@@ -165,6 +248,17 @@ export type DatasetLifecycleStatus = z.infer<typeof datasetLifecycleStatusSchema
 export type ProvisioningStep = z.infer<typeof provisioningStepSchema>;
 export type ProvisioningTrace = z.infer<typeof provisioningTraceSchema>;
 export type ProvisionedResources = z.infer<typeof provisionedResourcesSchema>;
+export type TrustMetadata = z.infer<typeof trustMetadataSchema>;
+export type ProvidedSurface = z.infer<typeof providedSurfaceSchema>;
+export type RoleDefinition = z.infer<typeof roleDefinitionSchema>;
+export type PlatformRequirements = z.infer<typeof platformRequirementsSchema>;
+
+export const PROVIDED_SURFACE_KIND_LABELS: Record<ProvidedSurface["kind"], string> = {
+  api: "API",
+  dashboard: "Dashboard",
+  map: "Karte",
+  download: "Download",
+};
 
 export const INSTALLED_USE_CASE_SOURCE_LABELS: Record<InstalledUseCase["source"], string> = {
   "portal-backend": "Über das Portal-Backend bereitgestellt",

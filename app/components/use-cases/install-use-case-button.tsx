@@ -2,26 +2,43 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { LoaderCircle, Sparkles } from "lucide-react";
+import { ArrowLeft, FileSearch, LoaderCircle, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { DryRunPreview } from "@/components/use-cases/dry-run-preview";
+import { buildDryRunPlan } from "@/lib/dry-run";
 import type { InstallOptions } from "@/types/install-options";
+import type { UseCase } from "@/types/use-cases";
 
 /**
- * The pre-install fork (D10), shown before anything is provisioned:
+ * The pre-install wizard, shown before anything is provisioned:
  *
- *   - Datenquelle: demo preset · own MQTT broker (prompts for the connection)
- *     · configure later (→ the install stops at a DRAFT shell)
- *   - Freigabe: release now (→ AVAILABLE) · stage for review (→ READY)
- *   - plus the bundle's own installQuestions as free-text inputs
+ *   1. Datenquelle: demo preset · own MQTT broker (prompts for the connection)
+ *      · configure later (→ the install stops at a DRAFT shell)      — D10
+ *   2. Freigabe: release now (→ AVAILABLE) · stage for review (→ READY) — D10
+ *   3. the bundle's own installQuestions as free-text inputs
+ *   4. role assignment: bundle-declared roles bound to concrete groups
+ *   5. dry-run preview — what would be created, before anything is applied
  *
- * The primary button expands into the chooser; submitting POSTs the options to
- * the install route. Broker credentials are sent only to the backend — they are
- * never persisted in the install record or shown again (D3).
+ * Broker credentials are sent only to the backend — never persisted in the
+ * install record or shown again (D3).
+ *
+ * PLACEHOLDER SOURCE: the group list in step 4 is a constant and has to be read
+ * from the tenant's groups on the portal-backend instead. The chosen bindings
+ * are recorded on the install record but not yet applied to the backend.
  */
 
 type DataSourceMode = "demo" | "own" | "later";
 type GoLive = "release" | "stage";
+
+/** Placeholder tenant groups for the role-assignment step. */
+const MOCK_GROUPS = [
+  "Amt für Digitalisierung",
+  "Tiefbauamt",
+  "Umweltamt",
+  "Stadtwerke IT",
+  "Externe Dienstleister",
+];
 
 const DATA_SOURCE_CHOICES: { value: DataSourceMode; label: string; hint: string }[] = [
   {
@@ -54,15 +71,10 @@ const GO_LIVE_CHOICES: { value: GoLive; label: string; hint: string }[] = [
   },
 ];
 
-export function InstallUseCaseButton({
-  useCaseId,
-  installQuestions = [],
-}: {
-  useCaseId: string;
-  installQuestions?: string[];
-}) {
+export function InstallUseCaseButton({ useCase }: { useCase: UseCase }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,14 +82,13 @@ export function InstallUseCaseButton({
   const [goLive, setGoLive] = useState<GoLive>("release");
   const [broker, setBroker] = useState({ url: "", topic: "", username: "", password: "" });
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [roleAssignments, setRoleAssignments] = useState<Record<string, string>>({});
 
+  const installQuestions = useCase.installQuestions;
   const ownIncomplete = mode === "own" && (!broker.url.trim() || !broker.topic.trim());
 
-  async function handleInstall() {
-    setIsPending(true);
-    setError(null);
-
-    const options: InstallOptions = {
+  function currentOptions(): InstallOptions {
+    return {
       dataSource:
         mode === "own"
           ? {
@@ -94,10 +105,18 @@ export function InstallUseCaseButton({
       // applies once a data source exists (post-install activation).
       goLive: mode === "later" ? "release" : goLive,
       answers,
+      roleAssignments,
     };
+  }
+
+  async function handleInstall() {
+    setIsPending(true);
+    setError(null);
+
+    const options = currentOptions();
 
     try {
-      const response = await fetch(`/api/use-cases/${useCaseId}/install`, {
+      const response = await fetch(`/api/use-cases/${useCase.id}/install`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(options),
@@ -250,14 +269,72 @@ export function InstallUseCaseButton({
         </fieldset>
       ) : null}
 
-      <div className="flex items-center gap-2">
-        <Button onClick={handleInstall} disabled={isPending || ownIncomplete}>
-          {isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-          {isPending ? "Wird bereitgestellt…" : "Bereitstellen"}
-        </Button>
-        <Button variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
-          Abbrechen
-        </Button>
+      {useCase.roles.length > 0 ? (
+        <fieldset className="flex flex-col gap-2">
+          <legend className="pb-1 text-sm font-semibold text-foreground">Rollen zuweisen</legend>
+          <p className="text-xs text-muted-foreground">
+            Der Anwendungsfall bringt Rollendefinitionen mit. Wem sie zustehen, entscheidet Ihre
+            Kommune — ordnen Sie jeder Rolle eine Gruppe zu.
+          </p>
+          {useCase.roles.map((role) => (
+            <label key={role.key} className="flex flex-col gap-1 rounded-md border p-2.5 text-sm">
+              <span className="font-medium text-foreground">{role.label}</span>
+              {role.description ? (
+                <span className="text-xs text-muted-foreground">{role.description}</span>
+              ) : null}
+              {role.permissions.length > 0 ? (
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  {role.permissions.join(" · ")}
+                </span>
+              ) : null}
+              <select
+                value={roleAssignments[role.key] ?? ""}
+                onChange={(event) =>
+                  setRoleAssignments({ ...roleAssignments, [role.key]: event.target.value })
+                }
+                className="mt-1 rounded-md border bg-background px-2.5 py-1.5 text-sm text-foreground"
+              >
+                <option value="">— noch nicht zugewiesen —</option>
+                {MOCK_GROUPS.map((group) => (
+                  <option key={group} value={group}>
+                    {group}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
+
+      {showPreview ? <DryRunPreview plan={buildDryRunPlan(useCase, currentOptions())} /> : null}
+
+      <div className="flex flex-wrap items-center gap-2">
+        {showPreview ? (
+          <>
+            <Button onClick={handleInstall} disabled={isPending}>
+              {isPending ? (
+                <LoaderCircle className="size-4 animate-spin" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+              {isPending ? "Wird bereitgestellt…" : "Jetzt bereitstellen"}
+            </Button>
+            <Button variant="outline" onClick={() => setShowPreview(false)} disabled={isPending}>
+              <ArrowLeft className="size-4" />
+              Zurück
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button onClick={() => setShowPreview(true)} disabled={ownIncomplete}>
+              <FileSearch className="size-4" />
+              Vorschau anzeigen
+            </Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Abbrechen
+            </Button>
+          </>
+        )}
       </div>
       {ownIncomplete ? (
         <p className="text-xs text-muted-foreground">Broker-URL und Topic werden benötigt.</p>

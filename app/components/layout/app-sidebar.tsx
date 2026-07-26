@@ -6,6 +6,7 @@ import {
   LayoutGrid,
   type LucideIcon,
   PackageCheck,
+  Sparkles,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -48,6 +49,8 @@ const getNavSections = (installedCount: number, useCaseCount: number): NavSectio
           ],
         },
         { title: text.nav.installed, href: "/installed", icon: PackageCheck, count: installedCount },
+        // Outlook feature — labelled as a draft in the page itself, not here.
+        { title: "Assistent", href: "/marketplace/assistant", icon: Sparkles },
       ],
     },
     {

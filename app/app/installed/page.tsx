@@ -4,11 +4,19 @@ import { InstalledAutoRefresh } from "@/components/use-cases/installed-auto-refr
 import { MarketplacePageShell } from "@/components/marketplace/page-shell";
 import { UseCaseInstallationCard } from "@/components/use-cases/use-case-installation-card";
 import { getMarketplaceText } from "@/lib/marketplace-text";
+import { getUseCases } from "@/lib/getUseCases";
 import { listInstalledUseCases } from "@/lib/use-case-installations";
 import type { InstalledUseCase } from "@/types/use-cases";
 
 export default async function InstalledPage() {
   const text = getMarketplaceText();
+
+  // What each installed use case *provides* is declared by its catalog entry, not
+  // by the install record — look it up so the installation card can surface the
+  // API/dashboard/map links. Missing entry (unlisted since install) → no panel.
+  const catalogueSurfaces = new Map(
+    (await getUseCases().catch(() => [])).map((useCase) => [useCase.id, useCase.provides]),
+  );
 
   // This page reads its installs from the local install store and refreshes their
   // status from the portal-backend (best-effort). Surface a hard read failure as an
@@ -53,6 +61,7 @@ export default async function InstalledPage() {
               <UseCaseInstallationCard
                 key={installation.id}
                 installation={installation}
+                surfaces={catalogueSurfaces.get(installation.useCaseId) ?? []}
               />
             ))}
           </div>

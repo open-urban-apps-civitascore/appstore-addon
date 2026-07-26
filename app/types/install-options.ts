@@ -38,6 +38,20 @@ export const installOptionsSchema = z.object({
    * persisted on the install record for traceability.
    */
   answers: z.record(z.string(), z.string()).default({}),
+  /**
+   * Role bindings chosen in the install wizard: role key → group name. The
+   * bundle declares role *definitions*; the binding to a concrete group is
+   * instance-specific and can only be made here (verified against the portal
+   * model: `Assignment` carries a group FK, `Role` is abstract).
+   *
+   * NOT YET WIRED: recorded on the install record for display only. Creating the
+   * assignments on the backend still has to be built.
+   *
+   * Optional rather than defaulted: most use cases declare no roles at all, and
+   * callers that build options by hand (tests, CLI) must not have to spell out
+   * an axis they never use.
+   */
+  roleAssignments: z.record(z.string(), z.string()).optional(),
 });
 
 export type InstallOptions = z.infer<typeof installOptionsSchema>;

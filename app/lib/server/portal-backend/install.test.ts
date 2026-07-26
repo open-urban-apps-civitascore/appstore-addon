@@ -23,6 +23,8 @@ const USE_CASE: UseCase = {
   description: "Demo use case.",
   publisher: "Stadt Musterstadt",
   categories: [],
+  provides: [],
+  roles: [],
   maturity: "prototype",
   installability: "direct",
   compatibility: ["core-v2"],

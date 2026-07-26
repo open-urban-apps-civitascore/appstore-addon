@@ -1,12 +1,19 @@
 import { repoListIndexSchema, type RepoListIndex } from "@/types/repo-list";
 
 /**
- * Mock catalog fixture — a verbatim copy of the real repo-list `index.json`
- * (civitas-marketplace-catalog, v1.3.1), so the mock UI browses exactly what
- * the live catalog serves. Parsed through the real zod schema at module load:
- * if the fixture ever drifts from the schema, the app fails loudly, not subtly.
+ * Mock catalog fixture — the real repo-list `index.json`
+ * (civitas-marketplace-catalog, v1.3.1) **plus local enrichment**, so the mock
+ * UI can exercise screens the published catalog has no data for yet. Parsed
+ * through the real zod schema at module load: if the fixture ever drifts from
+ * the schema, the app fails loudly, not subtly.
  *
- * Regenerate: copy the current index.json content into RAW_INDEX (keep `$schema` out).
+ * The enrichment is the four optional blocks `trust`, `requirements`,
+ * `provides` and `roles` — see `types/use-cases.ts`. They are NOT in the
+ * published index.json yet, because nothing authors or curates them so far.
+ * Everything else here is verbatim.
+ *
+ * Regenerate: copy the current index.json content into RAW_INDEX (keep `$schema`
+ * out) and re-apply the four enrichment blocks.
  */
 const RAW_INDEX = {
   "version": "1.3.1",
@@ -301,7 +308,31 @@ const RAW_INDEX = {
       "source": {
         "repoUrl": "https://gitlab.com/civitascore-openurbanapps/commune-musterstadt-baumkataster",
         "gitIdentifier": "v1.0.0"
-      }
+      },
+      "trust": {
+        "maintainer": { "name": "Stadt Musterstadt" },
+        "productionReferences": [],
+        "license": "EUPL-1.2"
+      },
+      "requirements": {
+        "coreVersions": ["2.0", "2.1"],
+        "components": ["PORTAL_BACKEND", "POSTGIS", "GEOSERVER"],
+        "connectors": []
+      },
+      "provides": [
+        {
+          "kind": "map",
+          "label": "Baumstandorte als Kartenebene",
+          "standard": "WFS",
+          "note": "Geo-Pfad — Baumkataster sind Geodaten, keine Zeitreihe."
+        },
+        {
+          "kind": "download",
+          "label": "Baumbestand als Datenexport",
+          "note": "Für die Weitergabe an Fachverfahren und Open-Data-Portale."
+        }
+      ],
+      "roles": []
     },
     {
       "id": "mittelerde-trafficcounter",
@@ -349,6 +380,59 @@ const RAW_INDEX = {
         "repoUrl": "https://gitlab.com/civitascore-openurbanapps/commune-mittelerde-trafficcounter",
         "gitIdentifier": "v1.1.0"
       },
+      "trust": {
+        "maintainer": {
+          "name": "Kommune Mittelerde",
+          "contactUrl": "https://gitlab.com/civitascore-openurbanapps/commune-mittelerde-trafficcounter"
+        },
+        "productionReferences": [
+          { "municipality": "Kommune Mittelerde", "since": "2026" },
+          { "municipality": "Stadt Bruchtal", "since": "2026" }
+        ],
+        "curatedBy": "Civitas Connect e. V.",
+        "curatedAt": "2026-07-19",
+        "license": "EUPL-1.2"
+      },
+      "requirements": {
+        "coreVersions": ["2.0", "2.1"],
+        "components": ["PORTAL_BACKEND", "FROST", "NIFI"],
+        "connectors": ["MQTT"]
+      },
+      "provides": [
+        {
+          "kind": "api",
+          "label": "Zählwerte als Zeitreihen-API",
+          "standard": "STA",
+          "urlTemplate": "https://api.civitas.musterstadt.de/datasets/{datasetId}/Datastreams",
+          "note": "SensorThings-API — mit Standardwerkzeugen abfragbar, ohne Export."
+        },
+        {
+          "kind": "dashboard",
+          "label": "Verkehrsaufkommen je Zählstelle",
+          "standard": "Superset",
+          "note": "Wochenverlauf und Tagesspitzen — die Ansicht, die dem Rat gezeigt wird."
+        },
+        {
+          "kind": "map",
+          "label": "Zählstellen auf der Stadtkarte",
+          "standard": "WMS",
+          "note": "Standorte der Dialog-Displays als Kartenebene."
+        }
+      ],
+      "roles": [
+        {
+          "key": "verkehr-datenpflege",
+          "label": "Datenpflege Verkehr",
+          "description": "Darf Zählstellen anlegen und Messwerte korrigieren.",
+          "permissions": ["DATASET_UPDATE", "DATASET_PAYLOAD_UPDATE"]
+        },
+        {
+          "key": "verkehr-freigabe",
+          "label": "Freigabe Verkehr",
+          "description": "Darf den Datensatz veröffentlichen — bewusst getrennt von der Pflege.",
+          "permissions": ["DATASET_READ", "DATASET_RELEASE"]
+        }
+      ],
       "modelForge": {
         "datasetId": "urn:core:platform:civitas:dataset:common:TrafficCounter-Mittelerde:1.0.0",
         "note": "Beim Installieren legt der Marketplace die Artefakte (GeoPoint, TrafficCounterReading, DataSet) über das CivitasCore Portal-Backend an, falls sie noch nicht existieren. GeoPoint wird wiederverwendet, wenn es bereits existiert."
@@ -397,6 +481,40 @@ const RAW_INDEX = {
         "repoUrl": "https://gitlab.com/civitascore-openurbanapps/commune-mittelerde-feinstaub",
         "gitIdentifier": "v1.0.0"
       },
+      "trust": {
+        "maintainer": { "name": "Kommune Mittelerde" },
+        "productionReferences": [{ "municipality": "Kommune Mittelerde", "since": "2026" }],
+        "curatedBy": "Civitas Connect e. V.",
+        "curatedAt": "2026-07-12",
+        "license": "EUPL-1.2"
+      },
+      "requirements": {
+        "coreVersions": ["2.0", "2.1"],
+        "components": ["PORTAL_BACKEND", "FROST", "NIFI", "SUPERSET"],
+        "connectors": ["MQTT"]
+      },
+      "provides": [
+        {
+          "kind": "api",
+          "label": "Messwerte als Zeitreihen-API",
+          "standard": "STA",
+          "urlTemplate": "https://api.civitas.musterstadt.de/datasets/{datasetId}/Observations"
+        },
+        {
+          "kind": "dashboard",
+          "label": "Feinstaubbelastung im Wochenverlauf",
+          "standard": "Superset",
+          "note": "Grenzwertüberschreitungen je Messstelle."
+        }
+      ],
+      "roles": [
+        {
+          "key": "umwelt-datenpflege",
+          "label": "Datenpflege Umwelt",
+          "description": "Darf Messstellen verwalten.",
+          "permissions": ["DATASET_UPDATE", "DATASET_PAYLOAD_UPDATE"]
+        }
+      ],
       "modelForge": {
         "datasetId": "urn:core:platform:civitas:dataset:common:Feinstaub-Mittelerde:1.0.0",
         "note": "Beim Installieren wird das Bundle aus dem Artefakt-Repo (Tag v1.0.0) geholt und über das CivitasCore Portal-Backend angelegt. GeoPoint wird wiederverwendet, falls es bereits existiert."

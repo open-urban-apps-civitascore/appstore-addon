@@ -35,6 +35,8 @@ const USE_CASE: UseCase = {
   description: "Created by scripts/live-install-smoke.ts — safe to delete.",
   publisher: "Marketplace Smoke Test",
   categories: [],
+  provides: [],
+  roles: [],
   maturity: "prototype",
   installability: "experimental",
   compatibility: ["core-v2"],

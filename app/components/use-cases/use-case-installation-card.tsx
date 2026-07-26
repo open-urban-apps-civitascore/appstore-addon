@@ -1,12 +1,16 @@
-import { CalendarClock, Database, FileJson2, Link2 } from "lucide-react";
+import Link from "next/link";
+import { CalendarClock, Database, FileJson2, Link2, Share2, UsersRound } from "lucide-react";
 
 import { ActivateInstalledUseCaseButton } from "@/components/use-cases/activate-installed-use-case-button";
 import { Badge } from "@/components/ui/badge";
+import { DemoDataPreview } from "@/components/use-cases/demo-data-preview";
+import { ProvidedSurfaces } from "@/components/use-cases/provided-surfaces";
 import { RemoveInstalledUseCaseButton } from "@/components/use-cases/remove-installed-use-case-button";
 import {
   DATASET_LIFECYCLE_STATUS_LABELS,
   INSTALLED_USE_CASE_SOURCE_LABELS,
   type InstalledUseCase,
+  type ProvidedSurface,
 } from "@/types/use-cases";
 
 function formatTimestamp(value: string): string {
@@ -18,7 +22,14 @@ function formatTimestamp(value: string): string {
   }).format(date);
 }
 
-export function UseCaseInstallationCard({ installation }: { installation: InstalledUseCase }) {
+export function UseCaseInstallationCard({
+  installation,
+  surfaces = [],
+}: {
+  installation: InstalledUseCase;
+  /** What the catalog entry declares this use case provides, if it is still listed. */
+  surfaces?: ProvidedSurface[];
+}) {
   return (
     <article className="flex flex-col gap-4 rounded-md border bg-card p-5">
       <div className="flex items-start justify-between gap-3">
@@ -35,9 +46,35 @@ export function UseCaseInstallationCard({ installation }: { installation: Instal
             useCaseId={installation.useCaseId}
             status={installation.status}
           />
+          <Link
+            href={`/installed/${installation.useCaseId}/export`}
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            <Share2 className="size-4" />
+            Teilen
+          </Link>
           <RemoveInstalledUseCaseButton useCaseId={installation.useCaseId} />
         </div>
       </div>
+
+      {/* Once the use case is live, show the working thing rather than an empty
+          shell. Only for a running installation that declares a dashboard. */}
+      {installation.status === "AVAILABLE" &&
+      surfaces.some((surface) => surface.kind === "dashboard") ? (
+        <DemoDataPreview
+          title={
+            surfaces.find((surface) => surface.kind === "dashboard")?.label ??
+            "Messwerte im Wochenverlauf"
+          }
+        />
+      ) : null}
+
+      <ProvidedSurfaces
+        surfaces={surfaces}
+        datasetId={installation.id}
+        isDemoData={installation.dataSourceMode === "demo"}
+        title="Was jetzt bereitsteht"
+      />
 
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-md border bg-background p-3 text-sm">
@@ -90,6 +127,26 @@ export function UseCaseInstallationCard({ installation }: { installation: Instal
               </div>
             ))}
           </dl>
+        </section>
+      ) : null}
+
+      {installation.roleAssignments && Object.keys(installation.roleAssignments).length > 0 ? (
+        <section className="rounded-md border bg-background p-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <UsersRound className="size-4" />
+            <span>Zugewiesene Rollen</span>
+          </div>
+          <dl className="mt-2 flex flex-col gap-2">
+            {Object.entries(installation.roleAssignments).map(([role, group]) => (
+              <div key={role} className="flex flex-wrap items-baseline gap-2 text-xs">
+                <dt className="font-medium text-foreground">{role}</dt>
+                <dd className="text-muted-foreground">→ {group}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Zuordnung im Marketplace erfasst — die Berechtigungen selbst verwaltet das Portal.
+          </p>
         </section>
       ) : null}
 

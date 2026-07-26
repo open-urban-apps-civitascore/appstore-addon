@@ -3,9 +3,12 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Building2, Link2 } from "lucide-react";
 
 import { MarketplacePageShell } from "@/components/marketplace/page-shell";
+import { FitCheck } from "@/components/use-cases/fit-check";
 import { IncludedArtifactsSpec } from "@/components/use-cases/included-artifacts-spec";
 import { InstallUseCaseButton } from "@/components/use-cases/install-use-case-button";
+import { ProvidedSurfaces } from "@/components/use-cases/provided-surfaces";
 import { RequiredBuildingBlocks } from "@/components/use-cases/required-building-blocks";
+import { TrustPanel } from "@/components/use-cases/trust-panel";
 import { UseCaseFacts } from "@/components/use-cases/use-case-facts";
 import { MaturityBadge } from "@/components/use-cases/use-case-status";
 import { getUseCaseById } from "@/lib/getUseCases";
@@ -77,11 +80,8 @@ export default async function UseCaseDetailPage({
                 <MaturityBadge maturity={useCase.maturity} />
               </div>
 
-              <div className="mt-1 flex flex-col items-start gap-1.5">
-                <InstallUseCaseButton
-                  useCaseId={useCase.id}
-                  installQuestions={useCase.installQuestions}
-                />
+              <div className="mt-1 flex w-full flex-col items-start gap-1.5">
+                <InstallUseCaseButton useCase={useCase} />
                 <p className="text-xs text-muted-foreground">{text.useCases.installDescription}</p>
               </div>
             </div>
@@ -102,6 +102,8 @@ export default async function UseCaseDetailPage({
               </p>
             </section>
 
+            <ProvidedSurfaces surfaces={useCase.provides} />
+
             <IncludedArtifactsSpec
               title={text.useCases.includedArtifacts}
               artifacts={useCase.includedArtifacts}
@@ -110,6 +112,10 @@ export default async function UseCaseDetailPage({
           </section>
 
           <aside className="flex flex-col gap-6">
+            <FitCheck useCase={useCase} />
+
+            <TrustPanel trust={useCase.trust} />
+
             {useCase.requiredCapabilities.length > 0 ? (
               <RequiredBuildingBlocks
                 title={text.useCases.requiredHeading}
