@@ -6,6 +6,7 @@ import {
   LayoutGrid,
   type LucideIcon,
   PackageCheck,
+  Share2,
   Sparkles,
 } from "lucide-react";
 
@@ -49,6 +50,9 @@ const getNavSections = (installedCount: number, useCaseCount: number): NavSectio
           ],
         },
         { title: text.nav.installed, href: "/installed", icon: PackageCheck, count: installedCount },
+        // Sharing starts from the instance inventory, so it is a peer of
+        // "Installiert" rather than an action on one installation.
+        { title: "Teilen", href: "/export", icon: Share2 },
         // Outlook feature — labelled as a draft in the page itself, not here.
         { title: "Assistent", href: "/marketplace/assistant", icon: Sparkles },
       ],

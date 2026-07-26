@@ -47,7 +47,7 @@ export function UseCaseInstallationCard({
             status={installation.status}
           />
           <Link
-            href={`/installed/${installation.useCaseId}/export`}
+            href={`/export?from=${installation.useCaseId}`}
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
           >
             <Share2 className="size-4" />
