@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { DemoDataPreview } from "@/components/use-cases/demo-data-preview";
 import { ProvidedSurfaces } from "@/components/use-cases/provided-surfaces";
 import { RemoveInstalledUseCaseButton } from "@/components/use-cases/remove-installed-use-case-button";
+import { SwitchDataSourceButton } from "@/components/use-cases/switch-data-source-button";
 import {
   DATASET_LIFECYCLE_STATUS_LABELS,
   INSTALLED_USE_CASE_SOURCE_LABELS,
@@ -75,6 +76,12 @@ export function UseCaseInstallationCard({
         isDemoData={installation.dataSourceMode === "demo"}
         title="Was jetzt bereitsteht"
       />
+
+      {/* The step from trial to production: swap the source, keep everything
+          that was configured around it. Only offered while on demo data. */}
+      {installation.dataSourceMode === "demo" ? (
+        <SwitchDataSourceButton datasetName={installation.createdDataset.name} />
+      ) : null}
 
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-md border bg-background p-3 text-sm">

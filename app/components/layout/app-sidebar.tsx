@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   ChevronRight,
+  ClipboardCheck,
   FileQuestion,
   Hexagon,
   LayoutGrid,
@@ -53,6 +54,9 @@ const getNavSections = (installedCount: number, useCaseCount: number): NavSectio
         // Sharing starts from the instance inventory, so it is a peer of
         // "Installiert" rather than an action on one installation.
         { title: "Teilen", href: "/export", icon: Share2 },
+        // Curator's view. Visible to everyone here; in a real deployment it
+        // belongs behind the curation permission.
+        { title: "Kuratierung", href: "/curation", icon: ClipboardCheck },
         // Outlook feature — labelled as a draft in the page itself, not here.
         { title: "Assistent", href: "/marketplace/assistant", icon: Sparkles },
       ],
