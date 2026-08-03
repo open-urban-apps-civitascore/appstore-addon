@@ -43,9 +43,27 @@ const BUNDLE: UseCaseBundle = {
     version: "1.0.0",
     dataStructureRefs: [DS_TREE_RECORD, DS_TREE_SPECIES],
   },
+  // Flat elements: the identity mapping is derived from the last element's
+  // properties, and a nested one is rejected up front (see toMappingBody).
   elements: [
-    { ref: DS_TREE_RECORD, schema: { $id: DS_TREE_RECORD, title: "TreeRecord", type: "object" } },
-    { ref: DS_TREE_SPECIES, schema: { $id: DS_TREE_SPECIES, title: "TreeSpecies", type: "object" } },
+    {
+      ref: DS_TREE_RECORD,
+      schema: {
+        $id: DS_TREE_RECORD,
+        title: "TreeRecord",
+        type: "object",
+        properties: { treeId: { type: "string" }, height: { type: "number" } },
+      },
+    },
+    {
+      ref: DS_TREE_SPECIES,
+      schema: {
+        $id: DS_TREE_SPECIES,
+        title: "TreeSpecies",
+        type: "object",
+        properties: { speciesId: { type: "string" }, name: { type: "string" } },
+      },
+    },
   ],
   source: USE_CASE.source,
   commit: "abc1234",
@@ -126,10 +144,14 @@ function handle(req: IncomingMessage, res: ServerResponse, body: string): void {
     body: body ? JSON.parse(body) : undefined,
   });
 
-  const created = (location: string) => {
+  const created = (location: string, extra: Record<string, unknown> = {}) => {
     res.writeHead(201, { "Content-Type": "application/json", Location: location });
-    res.end(JSON.stringify({ id: location.split("/").filter(Boolean).at(-1) }));
+    res.end(JSON.stringify({ id: location.split("/").filter(Boolean).at(-1), ...extra }));
   };
+  // A plausible minted CORE URN. The shape is what matters: the config-adapter
+  // validates it, and its name segment accepts letters and digits only.
+  const urn = (artifactType: string, name: string) =>
+    `urn:core:platform:civitas:${artifactType}:common:${name.replace(/[^A-Za-z0-9]/g, "") || "X"}:test000000:1.0.0`;
   const status = (code: number, payload?: unknown) => {
     res.writeHead(code, payload ? { "Content-Type": "application/json" } : undefined);
     res.end(payload ? JSON.stringify(payload) : undefined);
@@ -141,20 +163,38 @@ function handle(req: IncomingMessage, res: ServerResponse, body: string): void {
 
   if (method === "POST") {
     if (path === "/datastructures") return created(`/datastructures/${nextId("ds")}`);
-    if (/^\/datastructures\/[^/]+\/versions$/.test(path)) return created(`${path}/${nextId("v")}`);
+    if (/^\/datastructures\/[^/]+\/versions$/.test(path)) {
+      const model = body ? (JSON.parse(body) as { modelName?: string }) : undefined;
+      // The minted model URN comes back HERE and nowhere else.
+      return created(`${path}/${nextId("v")}`, { modelUrn: urn("element", model?.modelName ?? "X") });
+    }
     if (/^\/datastructures\/[^/]+\/versions\/[^/]+\/release$/.test(path)) return status(200);
     if (/^\/datastructures\/[^/]+\/(release|unrelease)$/.test(path)) return status(200);
-    if (path === "/datasources") return created(`/datasources/${nextId("src")}`);
+    if (path === "/datasources") {
+      return created(`/datasources/${nextId("src")}`, { configurationUrn: urn("datasource", "Source") });
+    }
     if (/^\/datasources\/[^/]+\/(release|unrelease)$/.test(path)) return status(200);
+    // 200 with the URN pins in the BODY, and no Location header — mappings are the
+    // one create that does not answer 201.
+    if (path === "/mappings") {
+      return status(200, {
+        logicalUrn: urn("mapping", "Identity").replace(/:1\.0\.0$/, ""),
+        versionedUrn: urn("mapping", "Identity"),
+        version: "1.0.0",
+      });
+    }
     if (path === "/datasets") return created(`/datasets/${nextId("set")}`);
     if (/^\/datasets\/[^/]+\/pipelines$/.test(path)) return created(`${path}/${nextId("pipe")}`);
-    if (/^\/datasets\/[^/]+\/datasinks$/.test(path)) return created(`${path}/${nextId("sink")}`);
+    if (/^\/datasets\/[^/]+\/datasinks$/.test(path)) {
+      return created(`${path}/${nextId("sink")}`, { configurationUrn: urn("datasink", "Sink") });
+    }
     if (/^\/datasets\/[^/]+\/stage$/.test(path)) return status(200);
     if (/^\/datasets\/[^/]+\/unstage$/.test(path)) return status(200);
     if (/^\/datasets\/[^/]+\/release$/.test(path)) return status(config.releaseStatus);
     if (/^\/datasets\/[^/]+\/unrelease$/.test(path)) return status(202);
     return status(404);
   }
+  if (method === "PATCH" && /^\/datasources\/[^/]+$/.test(path)) return status(200);
   if (method === "GET" && /^\/datasets\/[^/]+$/.test(path)) {
     const state =
       config.datasetStates[Math.min(getDatasetCalls, config.datasetStates.length - 1)];
@@ -229,6 +269,7 @@ describe("portal-backend install orchestrator", () => {
     const datasourceRelease = index((p) => /^\/datasources\/[^/]+\/release$/.test(p));
     const dataset = index((p) => p === "/datasets");
     const datasink = index((p) => p.endsWith("/datasinks"));
+    const mapping = index((p) => p === "/mappings");
     const pipeline = index((p) => p.endsWith("/pipelines"));
     const stage = index((p) => p.endsWith("/stage"));
     const release = index((p) => /^\/datasets\/[^/]+\/release$/.test(p));
@@ -241,9 +282,18 @@ describe("portal-backend install orchestrator", () => {
     assert.ok(datasourceRelease > datasource, "datasource released after create");
     assert.ok(dataset > datasourceRelease, "dataset after the datasource is AVAILABLE");
     assert.ok(datasink > dataset, "datasink under the dataset");
-    assert.ok(pipeline > datasink, "datasink BEFORE pipeline (the pipeline links it)");
+    assert.ok(mapping > datasink, "mapping before the pipeline that references it");
+    assert.ok(pipeline > mapping, "pipeline last of the three — it references all of them");
     assert.ok(stage > pipeline, "stage after wiring");
     assert.ok(release > stage, "release last");
+
+    // The version is attached by PATCH, never at create time.
+    const patches = requests.filter((r) => r.method === "PATCH");
+    assert.equal(patches.length, 1);
+    assert.match(patches[0].path, /^\/datasources\/[^/]+$/);
+    const patchIndex = requests.findIndex((r) => r.method === "PATCH");
+    const releaseIndex = requests.findIndex((r) => /^\/datasources\/[^/]+\/release$/.test(r.path));
+    assert.ok(patchIndex < releaseIndex, "PATCH before release — a released source cannot change version");
 
     // one create per bundle datastructure (2), each with version + both releases
     assert.equal(posts.filter((p) => p === "/datastructures").length, 2);
@@ -257,13 +307,31 @@ describe("portal-backend install orchestrator", () => {
     assert.deepEqual(pipelineBody.dataSourceIds, ["src-5"]);
     assert.ok(Array.isArray(pipelineBody.dataSinkIds) && (pipelineBody.dataSinkIds as string[]).length === 1);
 
-    // datasource + FROST sink wire to the LAST element's version (bundle refs are
-    // in dependency order — the top-level record comes last), here v-4
+    // Datasource, mapping and sink all wire to the LAST element (bundle refs are in
+    // dependency order — the top-level record comes last), by its MINTED urn.
     const datasourceRequest = requests.find((r) => r.method === "POST" && r.path === "/datasources");
-    assert.equal((datasourceRequest?.body as Record<string, unknown>).dataStructureVersionId, "v-4");
+    assert.equal(
+      (datasourceRequest?.body as Record<string, unknown>).dataStructureVersionId,
+      null,
+      "no version at create time",
+    );
+    assert.equal((patches[0].body as Record<string, unknown>).dataStructureVersionId, "v-4");
+
+    const speciesUrn = "urn:core:platform:civitas:element:common:TreeSpecies:test000000:1.0.0";
     const datasinkRequest = requests.find((r) => r.method === "POST" && r.path.endsWith("/datasinks"));
-    const datasinkBody = datasinkRequest?.body as { configuration?: { dataStructureVersionId?: string } };
-    assert.equal(datasinkBody.configuration?.dataStructureVersionId, "v-4");
+    const datasinkBody = datasinkRequest?.body as {
+      dataSinkType?: string;
+      configuration?: { element?: string; tableName?: string };
+    };
+    assert.equal(datasinkBody.dataSinkType, "POSTGIS");
+    assert.equal(datasinkBody.configuration?.element, speciesUrn);
+    assert.equal(datasinkBody.configuration?.tableName, "uc_baumkataster_starter");
+
+    const mappingRequest = requests.find((r) => r.method === "POST" && r.path === "/mappings");
+    const mappingBody = mappingRequest?.body as { source?: string; target?: string; fields?: unknown };
+    assert.equal(mappingBody.source, speciesUrn);
+    assert.equal(mappingBody.target, speciesUrn, "identity: one structure on both ends");
+    assert.deepEqual(mappingBody.fields, { "$.speciesId": "$.speciesId", "$.name": "$.name" });
 
     // the record persists everything uninstall needs
     assert.equal(record.source, "portal-backend");
@@ -272,6 +340,8 @@ describe("portal-backend install orchestrator", () => {
     assert.ok(record.provisionedResources?.dataSourceId);
     assert.ok(record.provisionedResources?.dataSinkId);
     assert.ok(record.provisionedResources?.pipelineId);
+    // The mapping has no portal id — the LOGICAL urn is its delete handle.
+    assert.ok(record.provisionedResources?.mappingLogicalUrn);
     assert.equal((await store.get(USE_CASE.id))?.id, record.id);
   });
 
@@ -352,19 +422,14 @@ describe("portal-backend install orchestrator", () => {
     );
   });
 
-  test("install with a bundled pipeline: real model, entityIds rebound to created ids, sink type from model", async () => {
+  test("the pipeline graph is synthesized, wired by minted URN — a bundled drawing is ignored", async () => {
+    // The bundle's own pipeline.json is a React-Flow drawing in the format this
+    // backend no longer consumes. For one source and one sink the chain is fully
+    // determined, so the installer builds it. Ignoring the file is the behaviour
+    // under test, not an oversight.
     const pipeline = {
-      nodes: [
-        { id: "n-start", type: "start", data: { label: "Start" } },
-        { id: "n-src", type: "dataSource", data: { label: "DataSource", entityId: "AUTHORED-SRC" } },
-        { id: "n-sink", type: "frost", data: { label: "Sink", entityId: "AUTHORED-SINK" } },
-        { id: "n-end", type: "end", data: { label: "End" } },
-      ],
-      edges: [
-        { id: "e1", source: "n-start", target: "n-src" },
-        { id: "e2", source: "n-src", target: "n-sink" },
-        { id: "e3", source: "n-sink", target: "n-end" },
-      ],
+      nodes: [{ id: "n-src", type: "dataSource", data: { entityId: "AUTHORED-SRC" } }],
+      edges: [],
     };
     const store = new InMemoryInstallStore();
 
@@ -372,43 +437,55 @@ describe("portal-backend install orchestrator", () => {
 
     const pipelineReq = requests.find((r) => r.method === "POST" && r.path.endsWith("/pipelines"));
     const body = pipelineReq?.body as {
-      model: { nodes: { type: string; data: { entityId?: string } }[] };
+      model: { nodes: { kind: string; sourceRef?: string; mappingRef?: string; sinkRef?: string }[] };
+      styles: { nodes: { type: string; data: { entityId?: string } }[] };
       dataSourceIds: string[];
       dataSinkIds: string[];
     };
-    const nodeOf = (t: string) => body.model.nodes.find((n) => n.type === t);
-    // source/sink nodes now carry the CREATED ids the orchestrator linked, NOT the
-    // authoring-instance ids that came in the bundle
-    assert.notEqual(nodeOf("dataSource")?.data.entityId, "AUTHORED-SRC");
-    assert.equal(nodeOf("dataSource")?.data.entityId, body.dataSourceIds[0]);
-    assert.equal(nodeOf("frost")?.data.entityId, body.dataSinkIds[0]);
-    // the datasink was created with the type declared by the model's sink node
-    const sinkReq = requests.find((r) => r.method === "POST" && r.path.endsWith("/datasinks"));
-    assert.equal((sinkReq?.body as { dataSinkType: string }).dataSinkType, "FROST");
+
+    assert.deepEqual(
+      body.model.nodes.map((n) => n.kind),
+      ["start", "source", "mapping", "sink", "end"],
+    );
+    const kindOf = (k: string) => body.model.nodes.find((n) => n.kind === k)!;
+    assert.match(kindOf("source").sourceRef!, /^urn:core:.*:datasource:/);
+    assert.match(kindOf("mapping").mappingRef!, /^urn:core:.*:mapping:/);
+    assert.match(kindOf("sink").sinkRef!, /^urn:core:.*:datasink:/);
+
+    // Nothing authored survives: no bundled node id, no authoring-instance id.
+    const styleSource = body.styles.nodes.find((n) => n.type === "dataSource")!;
+    assert.notEqual(styleSource.data.entityId, "AUTHORED-SRC");
+    assert.equal(styleSource.data.entityId, body.dataSourceIds[0]);
   });
 
-  test("install rejects a geoPersistence (POSTGIS) sink pipeline — not supported yet — and rolls back", async () => {
+  test("a nested (non-flat) element is refused before anything is provisioned", async () => {
     config.datasetStates = [{ dataSetStatus: "DRAFT", pendingSagaType: null }];
-    const pipeline = {
-      nodes: [
-        { id: "n-start", type: "start", data: {} },
-        { id: "n-src", type: "dataSource", data: { entityId: null } },
-        { id: "n-sink", type: "geoPersistence", data: { entityId: null } },
-        { id: "n-end", type: "end", data: {} },
+    const nested: UseCaseBundle = {
+      ...BUNDLE,
+      elements: [
+        {
+          ref: DS_TREE_RECORD,
+          schema: {
+            $id: DS_TREE_RECORD,
+            title: "TreeRecord",
+            type: "object",
+            properties: {
+              treeId: { type: "string" },
+              location: { $ref: "urn:core:platform:civitas:datastructure:common:GeoPoint:1.0.0" },
+            },
+          },
+        },
       ],
-      edges: [],
+      dataset: { ...BUNDLE.dataset, dataStructureRefs: [DS_TREE_RECORD] },
     };
     const store = new InMemoryInstallStore();
 
-    await assert.rejects(
-      () => installUseCase(USE_CASE, makeDeps(store, { ...BUNDLE, pipeline })),
-      /POSTGIS|does not support/,
-    );
+    await assert.rejects(() => installUseCase(USE_CASE, makeDeps(store, nested)), /location|flat/);
 
+    // Failing at the mapping means the sink exists already — the rollback has to
+    // remove it, along with everything else this attempt created.
     const sequence = requests.map((r) => `${r.method} ${r.path}`);
-    // the POSTGIS guard fires BEFORE the datasink is created; whatever was made so
-    // far (datastructures, datasource) is rolled back, and nothing is recorded
-    assert.ok(!sequence.some((s) => s.endsWith("/datasinks")), "no datasink created");
+    assert.ok(!sequence.some((s) => s.startsWith("POST /mappings")), "no mapping created");
     assert.ok(sequence.some((s) => s.startsWith("DELETE /datastructures/")), "datastructures rolled back");
     assert.equal(await store.get(USE_CASE.id), null);
   });

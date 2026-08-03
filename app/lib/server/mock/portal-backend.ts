@@ -68,7 +68,16 @@ const json = (status: number, body: unknown, headers?: Record<string, string>): 
     headers: { "Content-Type": "application/json", ...headers },
   });
 
-const created = (path: string): Response => json(201, {}, { Location: path });
+const created = (path: string, body: Record<string, unknown> = {}): Response =>
+  json(201, body, { Location: path });
+
+/**
+ * A plausible minted CORE URN. The real disambiguator is a random 10-char base36
+ * token the server derives; the shape matters here (the config-adapter validates
+ * it, and the name segment accepts letters and digits only), the entropy does not.
+ */
+const mintUrn = (artifactType: string, name: string, version = "1.0.0"): string =>
+  `urn:core:platform:civitas:${artifactType}:common:${name.replace(/[^A-Za-z0-9]/g, "") || "Mock"}:mock000000:${version}`;
 const noContent = (): Response => new Response(null, { status: 204 });
 const ok = (): Response => json(200, {});
 const notFound = (): Response => json(404, { error: "not found" });
@@ -108,7 +117,13 @@ export const mockPortalBackendFetch: typeof fetch = async (input, init) => {
   }
   let match = path.match(/^\/datastructures\/([^/]+)\/versions$/);
   if (method === "POST" && match) {
-    return created(`${path}/${nextId("version")}`);
+    // The minted `modelUrn` comes back HERE and nowhere else — the sink and the
+    // mapping both reference it, so a mock that omits it would let the install
+    // pass offline and fail live.
+    const body = readBody(init) as { modelName?: string; version?: string } | undefined;
+    return created(`${path}/${nextId("version")}`, {
+      modelUrn: mintUrn("element", body?.modelName ?? "MockElement", body?.version ?? "1.0.0"),
+    });
   }
   if (
     method === "POST" &&
@@ -122,12 +137,37 @@ export const mockPortalBackendFetch: typeof fetch = async (input, init) => {
 
   // ── Datasources ──────────────────────────────────────────────────────────────
   if (method === "POST" && path === "/datasources") {
-    return created(`/v1/datasources/${nextId("source")}`);
+    const body = readBody(init) as { name?: string; dataStructureVersionId?: unknown } | undefined;
+    // The live backend rejects a create-time version link; mirroring that here is
+    // what keeps mock mode honest about the create → PATCH → release order.
+    if (body?.dataStructureVersionId != null) {
+      return badRequest("dataStructureVersionId must be attached with PATCH, not at create time");
+    }
+    return created(`/v1/datasources/${nextId("source")}`, {
+      configurationUrn: mintUrn("datasource", body?.name ?? "MockSource"),
+    });
+  }
+  if (method === "PATCH" && /^\/datasources\/[^/]+$/.test(path)) {
+    return ok();
   }
   if (method === "POST" && /^\/datasources\/[^/]+\/(release|unrelease)$/.test(path)) {
     return ok();
   }
   if (method === "DELETE" && /^\/datasources\/[^/]+$/.test(path)) {
+    return noContent();
+  }
+
+  // ── Mappings (URN-addressed, no portal row — 200, pins in the body) ──────────
+  if (method === "POST" && path === "/mappings") {
+    const body = readBody(init) as { title?: string } | undefined;
+    const name = body?.title ?? "MockMapping";
+    return json(200, {
+      logicalUrn: mintUrn("mapping", name).replace(/:1\.0\.0$/, ""),
+      versionedUrn: mintUrn("mapping", name),
+      version: "1.0.0",
+    });
+  }
+  if (method === "DELETE" && path === "/mappings") {
     return noContent();
   }
 
@@ -146,7 +186,10 @@ export const mockPortalBackendFetch: typeof fetch = async (input, init) => {
 
     if (method === "POST" && rest === "/datasinks") {
       if (!dataset) return notFound();
-      return created(`/v1/datasets/${id}/datasinks/${nextId("sink")}`);
+      const body = readBody(init) as { configuration?: { tableName?: string } } | undefined;
+      return created(`/v1/datasets/${id}/datasinks/${nextId("sink")}`, {
+        configurationUrn: mintUrn("datasink", body?.configuration?.tableName ?? "MockSink"),
+      });
     }
     if (method === "POST" && rest === "/pipelines") {
       if (!dataset) return notFound();

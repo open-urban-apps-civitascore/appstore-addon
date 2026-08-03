@@ -40,16 +40,22 @@ function testDeps(): InstallDeps {
     }),
     store: new InMemoryInstallStore(),
     fetchBundle: mockFetchBundle,
+    // An always-succeeding generator, so "did the install start the demo data?"
+    // is testable without a broker.
+    simulator: {
+      register: async () => ({ ok: true }),
+      unregister: async () => ({ ok: true }),
+    },
     now: () => new Date("2026-07-18T12:00:00.000Z"),
     poll: { intervalMs: 5, timeoutMs: 5_000 },
   };
 }
 
 describe("mock mode — fixtures", () => {
-  test("catalog fixture carries the three use cases and their bundles", () => {
+  test("catalog fixture carries every use case with a bundle", () => {
     // The index parsed through the real zod schema at import (else this file
     // would not even load). Assert content + that every use case has a bundle.
-    assert.equal(mockRepoListIndex.useCases.length, 3);
+    assert.equal(mockRepoListIndex.useCases.length, 4);
     assert.ok(mockRepoListIndex.addons.length > 0, "addons fixture is empty");
     for (const useCase of mockRepoListIndex.useCases) {
       assert.ok(
@@ -59,15 +65,25 @@ describe("mock mode — fixtures", () => {
     }
   });
 
-  test("faithful to 2026-07-18 reality: only the trafficcounter bundle ships a pipeline", () => {
-    const withPipeline = Object.values(mockBundlesByRepoUrl).filter((b) => b.pipeline);
-    assert.equal(withPipeline.length, 1);
-    assert.equal(withPipeline[0].dataset.title, "TrafficCounter Mittelerde");
-    const nodes = (withPipeline[0].pipeline as { nodes: { type: string }[] }).nodes;
-    assert.deepEqual(
-      nodes.map((n) => n.type).sort(),
-      ["dataSource", "end", "frost", "start"],
-    );
+  test("faithful to reality: the pilot is the only bundle this install path can take", () => {
+    // The three published use cases all carry a nested `location` — two of them as
+    // a $ref to a separate GeoPoint structure, one inline. Either way it means a
+    // geometry column, which the install path refuses up front. Mock mode must
+    // show that, not paper over it, or the offline demo tells a story the live
+    // stack does not.
+    const SCALARS = new Set(["string", "number", "integer", "boolean"]);
+    const flat = (bundle: (typeof mockBundlesByRepoUrl)[string]) => {
+      const properties = (bundle.elements.at(-1)?.schema.properties ?? {}) as Record<
+        string,
+        { $ref?: string; type?: string }
+      >;
+      return Object.values(properties).every(
+        (property) => !property?.$ref && SCALARS.has(property?.type ?? ""),
+      );
+    };
+    const installable = Object.values(mockBundlesByRepoUrl).filter(flat);
+    assert.equal(installable.length, 1);
+    assert.equal(installable[0].dataset.title, "Verkehrszählung Hauptstraße (Demo)");
   });
 
   test("seed records validate and stay clear of mock-minted ids", () => {
@@ -98,23 +114,27 @@ describe("mock mode — the real orchestrator against the mock backend", () => {
     delete process.env.MARKETPLACE_MOCK_SAGA_MS;
   });
 
-  test("pipeline bundle (trafficcounter) installs to AVAILABLE — like the live stack", async () => {
+  test("the flat pilot installs to AVAILABLE — like the live stack", async () => {
     const deps = testDeps();
-    const { record, created } = await installUseCase(findUseCase("mittelerde-trafficcounter"), deps);
+    const { record, created } = await installUseCase(findUseCase("hello-trafficcounter"), deps);
 
     assert.equal(created, true);
     assert.equal(record.status, "AVAILABLE");
     assert.match(record.id, /^mock-dataset-/);
-    assert.equal(record.provisionedResources?.dataStructures.length, 2);
+    assert.equal(record.provisionedResources?.dataStructures.length, 1);
     assert.ok(record.provisionedResources?.dataSourceId);
     assert.ok(record.provisionedResources?.pipelineId);
+    assert.ok(record.provisionedResources?.mappingLogicalUrn, "the mapping is recorded for teardown");
     const labels = record.provisioningTrace?.steps.map((s) => s.label) ?? [];
     assert.ok(labels.includes("saga succeeded (AVAILABLE)"), `trace was: ${labels.join(" | ")}`);
+    // The demo data starts with the install, not after a separate action.
+    assert.equal(record.simulation?.topic, "civitas/hello-trafficcounter");
+    assert.equal(record.simulation?.error, undefined);
   });
 
   test("app mode (awaitSaga:false): install returns PROVISIONING; the refresh settles it and completes the trace", async () => {
     const deps: InstallDeps = { ...testDeps(), awaitSaga: false };
-    const { record } = await installUseCase(findUseCase("mittelerde-trafficcounter"), deps);
+    const { record } = await installUseCase(findUseCase("hello-trafficcounter"), deps);
 
     // Returns the moment the saga starts — the UI can show "Wird provisioniert" —
     // and the trace stops at "release (saga started)", no outcome step yet.
@@ -134,22 +154,22 @@ describe("mock mode — the real orchestrator against the mock backend", () => {
     );
   });
 
-  test("empty-model bundle (feinstaub) compensates to READY — like the live stack", async () => {
+  test("a nested bundle (feinstaub) is refused, and nothing is left recorded", async () => {
+    // Every install now sends a real, synthesized graph, so the old "empty model
+    // compensates to READY" path is gone. What still stops an install is content
+    // this path cannot express: feinstaub's reading nests a GeoPoint reference.
     const deps = testDeps();
-    const { record } = await installUseCase(findUseCase("mittelerde-feinstaub"), deps);
-
-    assert.equal(record.status, "READY");
-    const labels = record.provisioningTrace?.steps.map((s) => s.label) ?? [];
-    assert.ok(
-      labels.includes("saga failed — compensated back to READY"),
-      `trace was: ${labels.join(" | ")}`,
+    await assert.rejects(
+      () => installUseCase(findUseCase("mittelerde-feinstaub"), deps),
+      /location|flat/,
     );
+    assert.equal(await deps.store.get("mittelerde-feinstaub"), null);
   });
 
   test("second install is idempotent (reuses the recorded dataset)", async () => {
     const deps = testDeps();
-    const first = await installUseCase(findUseCase("mittelerde-trafficcounter"), deps);
-    const second = await installUseCase(findUseCase("mittelerde-trafficcounter"), deps);
+    const first = await installUseCase(findUseCase("hello-trafficcounter"), deps);
+    const second = await installUseCase(findUseCase("hello-trafficcounter"), deps);
 
     assert.equal(second.created, false);
     assert.equal(second.record.id, first.record.id);
@@ -157,17 +177,17 @@ describe("mock mode — the real orchestrator against the mock backend", () => {
 
   test("uninstall tears the AVAILABLE install down and the dataset is gone", async () => {
     const deps = testDeps();
-    const { record } = await installUseCase(findUseCase("mittelerde-trafficcounter"), deps);
+    const { record } = await installUseCase(findUseCase("hello-trafficcounter"), deps);
 
-    const removed = await uninstallUseCase("mittelerde-trafficcounter", deps);
+    const removed = await uninstallUseCase("hello-trafficcounter", deps);
     assert.equal(removed, true);
     assert.equal(await deps.client.getDataset(record.id), null);
-    assert.equal(await deps.store.get("mittelerde-trafficcounter"), null);
+    assert.equal(await deps.store.get("hello-trafficcounter"), null);
   });
 
   test("fork: stage-for-review stops at READY — dataset release is never called", async () => {
     const deps = testDeps();
-    const { record } = await installUseCase(findUseCase("mittelerde-trafficcounter"), deps, {
+    const { record } = await installUseCase(findUseCase("hello-trafficcounter"), deps, {
       dataSource: { mode: "demo" },
       goLive: "stage",
       answers: {},
@@ -182,12 +202,12 @@ describe("mock mode — the real orchestrator against the mock backend", () => {
     assert.ok(!labels.some((l) => l.startsWith("saga ")), `trace: ${labels.join(" | ")}`);
 
     // A READY install uninstalls via unstage → delete cascade.
-    assert.equal(await uninstallUseCase("mittelerde-trafficcounter", deps), true);
+    assert.equal(await uninstallUseCase("hello-trafficcounter", deps), true);
   });
 
   test("fork: configure-later installs a DRAFT shell — datastructures + dataset only", async () => {
     const deps = testDeps();
-    const { record } = await installUseCase(findUseCase("mittelerde-trafficcounter"), deps, {
+    const { record } = await installUseCase(findUseCase("hello-trafficcounter"), deps, {
       dataSource: { mode: "later" },
       goLive: "release",
       answers: {},
@@ -197,7 +217,7 @@ describe("mock mode — the real orchestrator against the mock backend", () => {
     assert.equal(record.provisionedResources?.dataSourceId, undefined);
     assert.equal(record.provisionedResources?.pipelineId, undefined);
     assert.equal(record.provisionedResources?.dataSinkId, undefined);
-    assert.equal(record.provisionedResources?.dataStructures.length, 2);
+    assert.equal(record.provisionedResources?.dataStructures.length, 1);
 
     const labels = record.provisioningTrace?.steps.map((s) => s.label) ?? [];
     assert.ok(labels.includes("dataset (DRAFT — datasource deferred)"), `trace: ${labels.join(" | ")}`);
@@ -214,12 +234,12 @@ describe("mock mode — the real orchestrator against the mock backend", () => {
     );
 
     // A DRAFT shell uninstalls directly (no unrelease/unstage needed).
-    assert.equal(await uninstallUseCase("mittelerde-trafficcounter", deps), true);
+    assert.equal(await uninstallUseCase("hello-trafficcounter", deps), true);
   });
 
   test("fork: non-empty install answers are persisted on the record", async () => {
     const deps = testDeps();
-    const { record } = await installUseCase(findUseCase("mittelerde-trafficcounter"), deps, {
+    const { record } = await installUseCase(findUseCase("hello-trafficcounter"), deps, {
       dataSource: { mode: "demo" },
       goLive: "release",
       answers: {
@@ -235,7 +255,7 @@ describe("mock mode — the real orchestrator against the mock backend", () => {
 
   test("activation: releasing a READY (stage-for-review) install takes it to AVAILABLE", async () => {
     const deps = testDeps();
-    const useCase = findUseCase("mittelerde-trafficcounter");
+    const useCase = findUseCase("hello-trafficcounter");
     await installUseCase(useCase, deps, { dataSource: { mode: "demo" }, goLive: "stage", answers: {} });
 
     const activated = await activateInstalledUseCase(useCase, deps);
@@ -247,7 +267,7 @@ describe("mock mode — the real orchestrator against the mock backend", () => {
 
   test("activation: completing a DRAFT shell builds the graph and reaches AVAILABLE", async () => {
     const deps = testDeps();
-    const useCase = findUseCase("mittelerde-trafficcounter");
+    const useCase = findUseCase("hello-trafficcounter");
     await installUseCase(useCase, deps, { dataSource: { mode: "later" }, goLive: "release", answers: {} });
 
     const activated = await activateInstalledUseCase(useCase, deps, {
@@ -260,7 +280,7 @@ describe("mock mode — the real orchestrator against the mock backend", () => {
     assert.ok(activated?.provisionedResources?.dataSinkId, "datasink id recorded");
     assert.ok(activated?.provisionedResources?.pipelineId, "pipeline id recorded");
     const labels = activated?.provisioningTrace?.steps.map((s) => s.label) ?? [];
-    assert.ok(labels.includes("activate: datasource (demo preset)"), `trace: ${labels.join(" | ")}`);
+    assert.ok(labels.includes("activate: datasource (demo broker)"), `trace: ${labels.join(" | ")}`);
     assert.ok(labels.includes("stage (DRAFT→READY)"), `trace: ${labels.join(" | ")}`);
 
     // The completed install uninstalls like any AVAILABLE one.
@@ -269,7 +289,7 @@ describe("mock mode — the real orchestrator against the mock backend", () => {
 
   test("activation: a DRAFT completed with goLive:stage stops at READY", async () => {
     const deps = testDeps();
-    const useCase = findUseCase("mittelerde-trafficcounter");
+    const useCase = findUseCase("hello-trafficcounter");
     await installUseCase(useCase, deps, { dataSource: { mode: "later" }, goLive: "release", answers: {} });
 
     const activated = await activateInstalledUseCase(useCase, deps, {
@@ -284,7 +304,7 @@ describe("mock mode — the real orchestrator against the mock backend", () => {
 
   test("activation: a no-op for AVAILABLE installs and null when not installed", async () => {
     const deps = testDeps();
-    const useCase = findUseCase("mittelerde-trafficcounter");
+    const useCase = findUseCase("hello-trafficcounter");
     const { record } = await installUseCase(useCase, deps);
 
     const activated = await activateInstalledUseCase(useCase, deps);
@@ -307,7 +327,8 @@ describe("mock mode — the real orchestrator against the mock backend", () => {
     for (const record of mockInstalledSeed) await deps.store.save(record);
 
     // The backend answers 404 for seed ids; teardown must treat that as
-    // "already gone" and still clear the local record.
+    // "already gone" and still clear the local record. (A seeded record, hence
+    // still one of the published use cases — the seeds predate the pilot.)
     const removed = await uninstallUseCase("mittelerde-trafficcounter", deps);
     assert.equal(removed, true);
     assert.equal(await deps.store.get("mittelerde-trafficcounter"), null);

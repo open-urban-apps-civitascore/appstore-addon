@@ -1,0 +1,14 @@
+{
+  "$schema": "https://civitasconnect.digital/core-dataset/v1",
+  "id": "urn:core:platform:civitas:dataset:common:HelloTrafficCounter:1.0.0",
+  "title": "Verkehrszählung Hauptstraße (Demo)",
+  "description": "Eine einzelne Zählstelle, drei Felder, Demo-Daten ab Installation. Der kleinste Use Case, der die ganze Kette beweist: Sensor → Broker → Pipeline → abfragbare Tabelle.",
+  "version": "1.0.0",
+  "dataStructureRefs": [
+    "urn:core:platform:civitas:datastructure:mobility:TrafficCount:1.0.0"
+  ],
+  "dataSourceRefs": [],
+  "dataSinkRefs": [],
+  "mappingRefs": [],
+  "pipelineRefs": []
+}

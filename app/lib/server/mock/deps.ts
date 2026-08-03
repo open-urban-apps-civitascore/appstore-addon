@@ -6,6 +6,7 @@ import { FileInstallStore, type InstallStore } from "@/lib/server/install-store"
 import { StubAuthHeaderProvider } from "@/lib/server/portal-backend/auth";
 import { PortalBackendClient } from "@/lib/server/portal-backend/client";
 import type { InstallDeps } from "@/lib/server/portal-backend/install";
+import type { SimulatorClient } from "@/lib/server/simulator/client";
 import type { InstalledUseCase } from "@/types/use-cases";
 
 import { mockFetchBundle } from "@/lib/server/mock/fixtures/bundles";
@@ -78,6 +79,24 @@ class SeededInstallStore implements InstallStore {
   }
 }
 
+/**
+ * An in-memory demo data generator. Mock mode has no broker and no publisher, but
+ * "Demo-Daten laufen" must still appear on the installed card — otherwise the
+ * offline demo tells a different story than the live one.
+ */
+const mockSimulations = new Map<string, string>();
+
+const mockSimulator: SimulatorClient = {
+  async register(id, input) {
+    mockSimulations.set(id, input.topic);
+    return { ok: true };
+  },
+  async unregister(id) {
+    mockSimulations.delete(id);
+    return { ok: true };
+  },
+};
+
 let storeSingleton: InstallStore | undefined;
 
 /** The process-wide mock install store (separate file, seeded once). */
@@ -100,6 +119,7 @@ export function getMockInstallDeps(): InstallDeps {
     }),
     store: getMockInstallStore(),
     fetchBundle: mockFetchBundle,
+    simulator: mockSimulator,
     now: () => new Date(),
     // Snappier than the production 2s/60s: the mock saga resolves in ~1.5s.
     poll: { intervalMs: 400, timeoutMs: 30_000 },

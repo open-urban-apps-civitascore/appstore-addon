@@ -6,11 +6,16 @@ import { mockRepoListIndex } from "@/lib/server/mock/fixtures/catalog";
 
 const USE_CASES = mockRepoListIndex.useCases;
 
-test("a plain-language traffic question finds the traffic use case first", () => {
+test("a plain-language traffic question finds a traffic use case first", () => {
   const matches = matchUseCases("Wir wollen wissen, wie der Verkehr am Bahnhof fließt", USE_CASES);
 
   assert.ok(matches.length > 0);
-  assert.equal(matches[0]?.useCase.id, "mittelerde-trafficcounter");
+  // The catalog now carries two traffic use cases (the full one and the flat demo
+  // pilot); which of them ranks first is not what this test is about.
+  assert.ok(
+    ["mittelerde-trafficcounter", "hello-trafficcounter"].includes(matches[0]?.useCase.id ?? ""),
+    `expected a traffic use case first, got ${matches[0]?.useCase.id}`,
+  );
   assert.ok(matches[0]?.reason.length > 0, "a match must carry a reason, never a bare score");
 });
 

@@ -1,3 +1,4 @@
+import { PortalBackendError } from "@/lib/server/portal-backend/errors";
 import type { UseCaseBundle } from "@/lib/server/bundle";
 import { parseUrn } from "@/lib/urn";
 import type { OwnBrokerConfig } from "@/types/install-options";
@@ -6,35 +7,57 @@ import type { DatasetLifecycleStatus, UseCase } from "@/types/use-cases";
 /**
  * CORE-IR → portal-backend payload mapper.
  *
- * Every request-body shape below was **verified live against a running
- * CivitasCore v2 portal-backend on 2026-07-14** (see the meta-repo spike doc
- * `2026-07-13-portal-backend-install-spike.md`, "Update (2026-07-14)"), replacing
- * the earlier guesses. Key facts baked in here:
+ * Every request body below was **verified live on 2026-08-03** by running the whole
+ * sequence against the branch stack by hand (meta-repo
+ * `docs/tasks/2026-08-03-install-starts-demo-data.md`, "Phase 0 — Result"). It
+ * targets the Model-Forge-integrated backend, which changed most of the payloads:
  *
  *  - a DataStructure carries no URN/title fields; the JSON Schema goes on the
- *    *version* as `model` (+ `dataStructureVersionSource: "OWN"`);
+ *    *version* as `model` (+ `dataStructureVersionSource: "OWN"`), and the version
+ *    create answers with the **minted `modelUrn`** — the handle everything
+ *    downstream references;
  *  - `createdFromDataSource: false` must be sent explicitly — omitting it lets the
  *    DTO's null overwrite the entity default and the insert dies with a DB
  *    NOT_NULL violation (400), although OpenAPI does not mark it required;
- *  - the DataSet does NOT reference datastructures; the graph is wired via
- *    `DataSource.dataStructureVersionId`, `Pipeline.dataSourceIds/dataSinkIds`
- *    and the FROST sink's `configuration.dataStructureVersionId`;
- *  - datasource `configuration` (MQTT) = `urls[]`, `topics[]`, `qos` — strictly
- *    validated only in the backend's OnRelease group;
+ *  - a datasource is created with `dataStructureVersionId: null` and PATCHed
+ *    afterwards; a create-time link is rejected;
+ *  - datasource `configuration` (MQTT) = `urls[]`, `topics[]`, `client_id`, `qos`;
+ *  - a sink references its row schema by **URN** (`configuration.element`), not by
+ *    version id; POSTGIS additionally needs a non-blank `tableName`;
+ *  - a mapping is a first-class artifact created before the pipeline, which then
+ *    references it by `mappingRef`;
+ *  - the pipeline `model` is a CORE graph (nodes keyed by `kind`, refs by URN);
+ *    `styles` still carries the React-Flow graph the portal editor renders from;
  *  - a dataset needs a non-blank `description`, or `stage` rejects it.
  *
  * Source of truth = the use case's CORE-IR bundle (`fetchUseCaseBundle`): a dataset
- * manifest, one JSON Schema per datastructure element, and — optionally — a
- * pipeline flow graph (`core-ir/pipeline.json`, re-bound to this instance here).
- * The bundle does not (yet) carry a datasource config, so that stays a
- * clearly-marked placeholder (`TODO(content)`). When no pipeline is bundled the
- * model is an empty placeholder, so the release saga's NiFi step rejects it
- * ("pipeline graph has no datasource node") and compensates — the install lands on
- * READY, not AVAILABLE, until real content arrives in the bundle.
+ * manifest and one JSON Schema per datastructure element. The bundle's
+ * `core-ir/pipeline.json` is deliberately **not** read: it is a React-Flow drawing
+ * in the pre-Model-Forge format, and for a single-source/single-sink use case the
+ * graph is fully determined anyway, so it is synthesized here (see
+ * {@link buildCorePipelineModel}). TODO(content): once bundles ship CORE artifact
+ * documents, install the graph they declare instead.
  */
 
 /** Connector types the portal-backend's datasource endpoint accepts. */
 export type DatasourceConnectorType = "MQTT" | "SQL";
+
+/**
+ * A CORE URN's `name` segment accepts letters and digits ONLY (`CoreUrn.NAME` in
+ * the config-adapter). Model Forge's own minter is more permissive — its
+ * `UrnParser.sanitize` keeps `_`, `.` and `-` — so a name like `traffic_counter`
+ * mints a URN that Model Forge stores happily and the NiFi mapping compiler then
+ * rejects at deploy time ("source is not a valid CORE URN"), after the sink table
+ * has already been created. The saga compensates and the install lands on READY
+ * with nothing pointing at the cause.
+ *
+ * So every name we hand the backend is stripped here. [verified live 2026-08-03 —
+ * this cost one full saga run]
+ */
+export function toUrnSafeName(name: string): string {
+  const stripped = name.replace(/[^A-Za-z0-9]/g, "");
+  return stripped || "Element";
+}
 
 export interface DatastructurePlanItem {
   /** CORE URN of the element (from the bundle). */
@@ -69,7 +92,7 @@ export function toDatastructureCreateBody(
 ): Record<string, unknown> {
   const { name } = parseUrn(element.ref);
   return {
-    name,
+    name: toUrnSafeName(name),
     description: `Installed by the marketplace from ${element.ref}`,
     // Explicit — omitting it triggers a DB NOT_NULL violation (see module docs).
     createdFromDataSource: false,
@@ -96,9 +119,24 @@ export function toDatastructureVersionBody(
   return {
     dataStructureVersionSource: "OWN",
     version,
-    modelName: name,
+    // The minted URN's name segment comes from here — it must be URN-safe.
+    modelName: toUrnSafeName(name),
     model,
   };
+}
+
+/** The minted `modelUrn` a version-create answered with — every later payload's handle. */
+export function readModelUrn(versionBody: unknown): string | null {
+  if (!versionBody || typeof versionBody !== "object") return null;
+  const urn = (versionBody as { modelUrn?: unknown }).modelUrn;
+  return typeof urn === "string" && urn ? urn : null;
+}
+
+/** The minted `configurationUrn` a datasource/datasink create answered with. */
+export function readConfigurationUrn(createdBody: unknown): string | null {
+  if (!createdBody || typeof createdBody !== "object") return null;
+  const urn = (createdBody as { configurationUrn?: unknown }).configurationUrn;
+  return typeof urn === "string" && urn ? urn : null;
 }
 
 /**
@@ -114,7 +152,6 @@ export function toDatastructureVersionBody(
 export function toDatasourceBody(
   useCase: UseCase,
   bundle: UseCaseBundle,
-  dataStructureVersionId: string,
   ownBroker?: OwnBrokerConfig,
 ): Record<string, unknown> {
   const connectorType: DatasourceConnectorType = "MQTT";
@@ -122,15 +159,19 @@ export function toDatasourceBody(
     ? {
         urls: [ownBroker.url],
         topics: [ownBroker.topic],
+        client_id: demoClientId(useCase.id),
         qos: 1,
         ...(ownBroker.username ? { user: ownBroker.username } : {}),
         ...(ownBroker.password ? { password: ownBroker.password } : {}),
       }
     : {
-        // Demo preset: points at the in-cluster FROST broker so the config passes
-        // the backend's OnRelease validation (and the demo simulator can publish).
-        urls: ["tcp://civitas-frost:1883"],
-        topics: [`civitas/${useCase.id}`],
+        // The bundled simulation broker. This used to read `tcp://civitas-frost:1883`
+        // — a port Docker publishes because the FROST image declares it, with nothing
+        // listening behind it. A demo install subscribed to nothing, forever, and
+        // reported no error anywhere. [fixed 2026-08-03]
+        urls: [demoBrokerUrl()],
+        topics: [demoTopic(useCase.id)],
+        client_id: demoClientId(useCase.id),
         qos: 1,
       };
   return {
@@ -138,8 +179,51 @@ export function toDatasourceBody(
     description: `Installed by the marketplace for ${useCase.id}`,
     connectorType,
     configuration,
-    dataStructureVersionId,
+    // Never at create time — the backend rejects the link here. The released
+    // version is attached afterwards with PATCH /datasources/{id}.
+    dataStructureVersionId: null,
   };
+}
+
+// ── Demo transport: one derivation, two consumers ────────────────────────────
+// The topic the datasource subscribes to and the topic the generator publishes on
+// MUST be the same string. Deriving both from these helpers is what makes drift
+// impossible — and a drift here is invisible: the pipeline provisions, the
+// generator reports success, and nothing ever arrives.
+
+/** In-cluster address of the bundled simulation broker (NiFi is the consumer). */
+export function demoBrokerUrl(): string {
+  return process.env.MARKETPLACE_DEMO_BROKER_URL?.trim() || "tcp://civitas-mosquitto:1883";
+}
+
+/** The topic a use case's demo data flows on. */
+export function demoTopic(useCaseId: string): string {
+  return `civitas/${useCaseId}`;
+}
+
+/**
+ * MQTT client id for this use case's NiFi consumer.
+ *
+ * Not cosmetic: left unset, every deployed `ConsumeMQTT` connects as
+ * `civitas-nifi-consumer`, and flows sharing an id kick each other off the broker
+ * — 1881 of 1886 connections on the dev machine ended "session taken over". The
+ * symptom is messages silently stopping, which is miserable to debug.
+ */
+export function demoClientId(useCaseId: string): string {
+  return `nifi-${useCaseId}`;
+}
+
+/**
+ * The PostGIS table a use case's rows land in. Derived, not authored: it only has
+ * to be a stable, valid Postgres identifier, and one per use case. Underscores are
+ * fine here — unlike in a URN name segment ({@link toUrnSafeName}), nothing
+ * validates this against the CORE grammar.
+ *
+ * TODO(content): let the bundle name its own table.
+ */
+export function demoTableName(useCaseId: string): string {
+  const slug = useCaseId.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "").toLowerCase();
+  return `uc_${slug || "usecase"}`;
 }
 
 /**
@@ -159,108 +243,268 @@ export function toDatasetBody(bundle: UseCaseBundle): Record<string, unknown> {
 export type DatasinkType = "FROST" | "POSTGIS";
 
 /**
- * `POST /datasets/{id}/datasinks` body.
- * A FROST sink's whole configuration is the datastructure *version* it persists
- * (verified live 2026-07-14). A POSTGIS sink additionally needs a non-blank
+ * `POST /datasets/{id}/datasinks` body. [verified 2026-08-03]
+ *
+ * A sink names its row schema by **versioned CORE URN** (`configuration.element`,
+ * a Model-Forge soft reference), not by version id — that is what the deploy engine
+ * resolves the table's columns from. POSTGIS additionally needs a non-blank
  * `tableName` (backend `PostgisConfiguration`, enforced by the NiFi
- * `PostgisSinkStage`), carried on the pipeline's `geoPersistence` node — not yet
- * plumbed through, so the orchestrator rejects POSTGIS sinks upfront (see
- * install.ts). The type comes from the bundle's pipeline sink node (via
- * {@link readSinkType}); FROST is the default when no pipeline is bundled.
+ * `PostgisSinkStage`).
+ *
+ * The response carries the minted `configurationUrn`, which the pipeline's sink
+ * node references as `sinkRef`.
  */
 export function toDatasinkBody(
-  dataStructureVersionId: string,
-  sinkType: DatasinkType = "FROST",
+  elementUrn: string,
+  sinkType: DatasinkType,
+  tableName?: string,
 ): Record<string, unknown> {
   return {
     dataSinkType: sinkType,
-    configuration: { dataStructureVersionId },
+    configuration:
+      sinkType === "POSTGIS" ? { tableName, element: elementUrn } : { element: elementUrn },
   };
 }
 
-// A pipeline model node whose type identifies the single source / single sink.
-// NODE types (React-Flow graph) are NOT the DataSink RESOURCE type: the source node
-// is `dataSource`; the sink node is `frost` (→ FROST resource) or `geoPersistence`
-// (→ POSTGIS resource). Confirmed in config-adapter `NodeKind` (the only Role.SINK
-// kinds are `frost`/`geoPersistence`) and the portal pipeline-editor node vocabulary.
-const SOURCE_NODE_TYPES = new Set(["dataSource"]);
-const SINK_NODE_TYPES = new Set(["frost", "geoPersistence"]);
-
 /**
- * Re-bind a bundled pipeline model to this instance. The React-Flow model the
- * portal editor produces embeds the *authoring instance's* datasource/datasink
- * UUIDs on each node's `data.entityId`; on install those resources get fresh
- * server-assigned ids, so we rewrite the source node's `entityId` to the created
- * datasource id and the sink node's to the created datasink id. Matching is by node
- * `type` — FlowPath guarantees exactly one source and one sink. Everything else
- * (edges keyed by node `id`, layout) is copied through untouched. Pure: the input
- * model is deep-cloned, never mutated.
+ * `POST /mappings` body — an **identity** mapping: every field copied to itself,
+ * source structure and target structure the same one.
+ *
+ * Nothing here needs translating: the message the sensor publishes and the row the
+ * table stores have the same fields. The mapping exists because the pipeline
+ * refuses a storage sink whose `element` is empty, and `element` is only ever
+ * filled from a mapping's target. So this is a translation that translates nothing,
+ * present to answer a question the editor asks in an awkward place. (Upstream
+ * candidate: a passthrough sink could answer it from its own selected structure —
+ * see the 07-28 exploration note, finding F1.)
+ *
+ * Reusing one structure for both ends is explicitly allowed and deploys —
+ * [verified live 2026-08-03].
+ *
+ * @throws PortalBackendError when the element is not flat. A nested property means
+ * a geometry column and a cross-structure `$ref`, neither of which this install
+ * path handles yet; failing here beats a saga that compensates ten minutes later
+ * with the table already created and dropped.
  */
-export function bindPipelineModel(
-  model: Record<string, unknown>,
-  dataSourceId: string,
-  dataSinkId: string,
+export function toMappingBody(
+  elementUrn: string,
+  schema: Record<string, unknown>,
+  title: string,
 ): Record<string, unknown> {
-  const clone = structuredClone(model);
-  const nodes = clone.nodes;
-  if (Array.isArray(nodes)) {
-    for (const node of nodes) {
-      if (!node || typeof node !== "object") continue;
-      const n = node as { type?: unknown; data?: Record<string, unknown> };
-      if (typeof n.type !== "string" || !n.data || typeof n.data !== "object") continue;
-      if (SOURCE_NODE_TYPES.has(n.type)) n.data.entityId = dataSourceId;
-      else if (SINK_NODE_TYPES.has(n.type)) n.data.entityId = dataSinkId;
-    }
+  const properties = (schema.properties ?? {}) as Record<string, unknown>;
+  const names = Object.keys(properties);
+  if (names.length === 0) {
+    throw new PortalBackendError(
+      `The use case's data structure declares no properties, so no mapping can be built.`,
+      422,
+    );
   }
-  return clone;
+
+  const SCALARS = new Set(["string", "number", "integer", "boolean"]);
+  const nested = names.filter((name) => {
+    const property = properties[name] as { type?: unknown; $ref?: unknown } | null;
+    if (!property || typeof property !== "object") return true;
+    if (typeof property.$ref === "string") return true;
+    return typeof property.type !== "string" || !SCALARS.has(property.type);
+  });
+  if (nested.length > 0) {
+    throw new PortalBackendError(
+      `The marketplace can only install use cases whose data structure is flat; ` +
+        `${nested.join(", ")} ${nested.length === 1 ? "is" : "are"} nested or a reference. ` +
+        `Geometry and referenced structures are not supported yet.`,
+      501,
+    );
+  }
+
+  return {
+    source: elementUrn,
+    target: elementUrn,
+    title,
+    fields: Object.fromEntries(names.map((name) => [`$.${name}`, `$.${name}`])),
+  };
 }
 
 /**
- * The sink type (`FROST`/`POSTGIS`) declared by the bundle's pipeline sink node, so
- * the created DataSink matches the flow graph. Defaults to `FROST` when no pipeline
- * is bundled or no sink node is found.
+ * The URNs and ids the pipeline graph is built from — every one of them minted by
+ * the backend during the install, none of them knowable in advance.
  */
-export function readSinkType(pipeline: Record<string, unknown> | undefined): DatasinkType {
-  const nodes = pipeline?.nodes;
-  if (Array.isArray(nodes)) {
-    for (const node of nodes) {
-      const t = (node as { type?: unknown })?.type;
-      if (t === "geoPersistence") return "POSTGIS";
-      if (t === "frost") return "FROST";
-    }
-  }
-  return "FROST";
+export interface PipelineRefs {
+  /** `configurationUrn` of the created datasource. */
+  sourceRef: string;
+  /** `versionedUrn` of the created mapping. */
+  mappingRef: string;
+  /** `configurationUrn` of the created datasink. */
+  sinkRef: string;
+  /** Portal ids, for `dataSourceIds`/`dataSinkIds` and the editor's node data. */
+  dataSourceId: string;
+  dataSinkId: string;
+  /** Sink node kind — decides the React-Flow node type in `styles`. */
+  sinkType: DatasinkType;
+  /** POSTGIS only: shown on the storage node in the editor. */
+  tableName?: string;
+}
+
+// Node ids must be UUIDs. Fixed constants are fine: exactly one pipeline exists per
+// installed dataset, so they never collide with each other.
+const NODE_START = "5a1e0000-0000-4000-8000-000000000001";
+const NODE_SOURCE = "5a1e0000-0000-4000-8000-000000000002";
+const NODE_MAPPING = "5a1e0000-0000-4000-8000-000000000003";
+const NODE_SINK = "5a1e0000-0000-4000-8000-000000000004";
+const NODE_END = "5a1e0000-0000-4000-8000-000000000005";
+
+const POSITIONS: Record<string, { x: number; y: number }> = {
+  [NODE_START]: { x: 360, y: -40 },
+  [NODE_SOURCE]: { x: 140, y: 100 },
+  [NODE_MAPPING]: { x: 320, y: 100 },
+  [NODE_SINK]: { x: 520, y: 100 },
+  [NODE_END]: { x: 740, y: 80 },
+};
+
+const EDGES: { id: string; source: string; target: string }[] = [
+  { id: "5a1e0000-0000-4000-8000-0000000000e1", source: NODE_START, target: NODE_SOURCE },
+  { id: "5a1e0000-0000-4000-8000-0000000000e2", source: NODE_SOURCE, target: NODE_MAPPING },
+  { id: "5a1e0000-0000-4000-8000-0000000000e3", source: NODE_MAPPING, target: NODE_SINK },
+  { id: "5a1e0000-0000-4000-8000-0000000000e4", source: NODE_SINK, target: NODE_END },
+];
+
+/**
+ * The CORE Pipeline document the config-adapter provisions from: nodes keyed by
+ * `kind`, wired to their artifacts by URN. [verified 2026-08-03]
+ *
+ * Synthesized rather than installed from the bundle. For one source and one sink
+ * the chain is fully determined — `start → source → mapping → sink → end` — so
+ * there is nothing to read; and what the bundle carries is a React-Flow drawing in
+ * a format this backend no longer consumes. See the module docs.
+ */
+export function buildCorePipelineModel(refs: PipelineRefs): Record<string, unknown> {
+  return {
+    nodes: [
+      { id: NODE_START, kind: "start", label: "Start", "x-ui-position": POSITIONS[NODE_START] },
+      {
+        id: NODE_SOURCE,
+        kind: "source",
+        label: "MQTT Source",
+        sourceRef: refs.sourceRef,
+        "x-ui-position": POSITIONS[NODE_SOURCE],
+      },
+      {
+        id: NODE_MAPPING,
+        kind: "mapping",
+        label: "Mapping",
+        mappingRef: refs.mappingRef,
+        "x-ui-position": POSITIONS[NODE_MAPPING],
+      },
+      {
+        id: NODE_SINK,
+        kind: "sink",
+        label: refs.sinkType === "POSTGIS" ? "Geospatial Data Storage" : "SensorThings",
+        sinkRef: refs.sinkRef,
+        "x-ui-position": POSITIONS[NODE_SINK],
+      },
+      { id: NODE_END, kind: "end", label: "End", "x-ui-position": POSITIONS[NODE_END] },
+    ],
+    edges: EDGES,
+  };
 }
 
 /**
- * `POST /datasets/{id}/pipelines` body. Shape verified 2026-07-14:
+ * The React-Flow graph the portal's pipeline EDITOR renders from. It ignores
+ * `model` entirely (`createSessionFromBackendDTO` reads `dto.styles`), so sending
+ * only the CORE document provisions a working pipeline that opens as an empty
+ * canvas — which reads as a broken install to anyone who looks.
+ */
+export function buildPipelineStyles(
+  refs: PipelineRefs,
+  mappingConfig: Record<string, unknown>,
+  structure: { id: string; versionId: string; name: string },
+): Record<string, unknown> {
+  const sinkNodeType = refs.sinkType === "POSTGIS" ? "geoPersistence" : "frost";
+  return {
+    viewport: { x: 0, y: 0, zoom: 1 },
+    nodePositions: POSITIONS,
+    nodes: [
+      {
+        id: NODE_START,
+        type: "start",
+        position: POSITIONS[NODE_START],
+        data: { nodeType: "start", label: "Start", configured: true },
+      },
+      {
+        id: NODE_SOURCE,
+        type: "dataSource",
+        position: POSITIONS[NODE_SOURCE],
+        data: {
+          label: "MQTT Source",
+          configured: true,
+          entityType: "datasource",
+          entityId: refs.dataSourceId,
+          configurationUrn: refs.sourceRef,
+          entityMetadata: { connector: "MQTT" },
+        },
+      },
+      {
+        id: NODE_MAPPING,
+        type: "mapping",
+        position: POSITIONS[NODE_MAPPING],
+        data: {
+          label: "Mapping",
+          configured: true,
+          mappingRef: refs.mappingRef,
+          mappingLogicalUrn: refs.mappingRef,
+          mappingConfig,
+          sourceDatastructureId: structure.id,
+          sourceVersionId: structure.versionId,
+          sourceName: structure.name,
+          targetDatastructureId: structure.id,
+          targetVersionId: structure.versionId,
+          targetName: structure.name,
+        },
+      },
+      {
+        id: NODE_SINK,
+        type: sinkNodeType,
+        position: POSITIONS[NODE_SINK],
+        data: {
+          label: refs.sinkType === "POSTGIS" ? "Geospatial Data Storage" : "SensorThings",
+          configured: true,
+          entityType: refs.sinkType === "POSTGIS" ? "persistence" : "sink",
+          entityId: refs.dataSinkId,
+          configurationUrn: refs.sinkRef,
+          ...(refs.tableName ? { tableName: refs.tableName } : {}),
+          dataStructureVersionId: `${structure.id}/${structure.versionId}`,
+          dataStructureName: structure.name,
+        },
+      },
+      {
+        id: NODE_END,
+        type: "end",
+        position: POSITIONS[NODE_END],
+        data: { nodeType: "end", label: "End", configured: true },
+      },
+    ],
+    edges: EDGES.map((edge) => ({ ...edge, type: "smoothstep", data: { label: "" } })),
+  };
+}
+
+/**
+ * `POST /datasets/{id}/pipelines` body. [verified 2026-08-03]
  * `dataSourceIds` must reference AVAILABLE (released) datasources; datasinks have
  * NO release lifecycle — the sink merely has to be created before the pipeline so
  * its id exists for `dataSinkIds`.
- *
- * The flow graph (roles SOURCE/TRANSFORM/SINK, edges, optional cron trigger — see
- * FlowPath.derive) is stored in **two** fields, and the portal writes both on save
- * (verified 2026-07-14): `model` is what the config-adapter (NiFi) provisions from;
- * `styles` is what the pipeline EDITOR reads to render the canvas — it *ignores*
- * `model` (`createSessionFromBackendDTO` reads `dto.styles`). Set only `model` and
- * the pipeline provisions fine but shows an EMPTY editor. When the bundle carries a
- * graph, its source/sink `entityId`s are re-bound to this instance's created ids
- * ({@link bindPipelineModel}); otherwise an empty graph is sent, which the NiFi
- * step rejects → the saga compensates to READY.
  */
 export function toPipelineBody(
   bundle: UseCaseBundle,
-  dataSourceId: string,
-  dataSinkId: string,
+  refs: PipelineRefs,
+  mappingConfig: Record<string, unknown>,
+  structure: { id: string; versionId: string; name: string },
 ): Record<string, unknown> {
-  const graph = bundle.pipeline ? bindPipelineModel(bundle.pipeline, dataSourceId, dataSinkId) : {};
   return {
     name: `${bundle.dataset.title} – Pipeline`,
     description: `Installed by the marketplace`,
-    model: graph, // provisioned by the config-adapter (NiFi) at release
-    styles: graph, // read by the portal pipeline editor to render the canvas
-    dataSourceIds: [dataSourceId],
-    dataSinkIds: [dataSinkId],
+    model: buildCorePipelineModel(refs), // provisioned by the config-adapter (NiFi)
+    styles: buildPipelineStyles(refs, mappingConfig, structure), // rendered by the editor
+    dataSourceIds: [refs.dataSourceId],
+    dataSinkIds: [refs.dataSinkId],
   };
 }
 

@@ -188,11 +188,23 @@ export const provisionedResourcesSchema = z.object({
       versionId: z.string(),
       name: z.string(),
       version: z.string(),
+      /**
+       * The URN Model Forge minted for this version's model. Server-derived (it
+       * carries a random disambiguator), so it cannot be reconstructed from the
+       * bundle — the sink and the mapping both reference it, and a later
+       * activation has no other way to find it again.
+       */
+      modelUrn: z.string().optional(),
     }),
   ),
   dataSourceId: z.string().optional(),
   dataSinkId: z.string().optional(),
   pipelineId: z.string().optional(),
+  /**
+   * A Mapping is addressed by URN, not by id — it lives in Model Forge, not as a
+   * portal row. The LOGICAL (version-less) urn is the delete handle.
+   */
+  mappingLogicalUrn: z.string().optional(),
 });
 
 export const installedUseCaseSchema = z.object({
@@ -231,6 +243,22 @@ export const installedUseCaseSchema = z.object({
    * bundle declares roles; the binding is instance-specific.
    */
   roleAssignments: z.record(z.string(), z.string()).optional(),
+  /**
+   * The demo data simulation registered for this install, when one is running.
+   * Set only for `dataSourceMode: "demo"` — we never publish onto someone's own
+   * broker. Absent means no demo data, which is a normal state, not an error:
+   * the generator is optional and an install must succeed without it.
+   */
+  simulation: z
+    .object({
+      /** The generator's simulation id — the dataset id, so uninstall needs no lookup. */
+      id: z.string(),
+      topic: z.string(),
+      registeredAt: z.string().datetime(),
+      /** Why registration did not happen / did not stick. Absent when it is running. */
+      error: z.string().optional(),
+    })
+    .optional(),
   provisioningTrace: provisioningTraceSchema.optional(),
   // Absent on records written before the delete-cascade support; uninstall then
   // falls back to removing only the dataset.

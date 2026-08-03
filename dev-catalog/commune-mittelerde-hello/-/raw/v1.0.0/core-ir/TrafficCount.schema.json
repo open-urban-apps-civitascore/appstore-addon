@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:core:platform:civitas:datastructure:mobility:TrafficCount:1.0.0",
+  "title": "TrafficCount",
+  "description": "Eine Messung einer Verkehrszählstelle. Flach und ohne Geometrie — jedes Feld wird zu einer Tabellenspalte.",
+  "type": "object",
+  "required": ["counterId", "timestamp", "vehicleCount"],
+  "properties": {
+    "counterId": {
+      "type": "string",
+      "description": "Kennung der Zählstelle."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Zeitpunkt der Messung."
+    },
+    "vehicleCount": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Anzahl gezählter Fahrzeuge im Messintervall."
+    }
+  }
+}

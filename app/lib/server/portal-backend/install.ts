@@ -7,14 +7,27 @@ import { PortalBackendClient } from "@/lib/server/portal-backend/client";
 import { PortalBackendError } from "@/lib/server/portal-backend/errors";
 import {
   buildInstallPlan,
+  demoTableName,
+  demoTopic,
+  readConfigurationUrn,
   readDatasetState,
-  readSinkType,
+  readModelUrn,
   toDatasetBody,
   toDatasinkBody,
   toDatasourceBody,
   toLifecycleStatus,
+  toMappingBody,
   toPipelineBody,
+  toUrnSafeName,
+  type DatasinkType,
+  type PipelineRefs,
 } from "@/lib/server/portal-backend/mapper";
+import {
+  createSimulatorClient,
+  simulatorBrokerUrl,
+  type SimulatorClient,
+} from "@/lib/server/simulator/client";
+import { scenarioFor } from "@/lib/server/simulator/scenarios";
 import {
   DEFAULT_ACTIVATION_OPTIONS,
   DEFAULT_INSTALL_OPTIONS,
@@ -35,17 +48,28 @@ import {
  * portal-backend call sequence and DataSet lifecycle that provision a *running* use
  * case (FROST project, APISIX routes, NiFi pipeline).
  *
- * The sequence below was **verified live on 2026-07-14** (meta-repo spike doc,
- * "Update (2026-07-14)"). The backend enforces a *release cascade* — an entity may
- * only be linked once it is AVAILABLE — so creates and releases interleave:
+ * The sequence below was **verified live on 2026-08-03** by running it by hand
+ * against the Model-Forge-integrated backend (meta-repo
+ * `docs/tasks/2026-08-03-install-starts-demo-data.md`, "Phase 0 — Result"). The
+ * backend enforces a *release cascade* — an entity may only be linked once it is
+ * AVAILABLE — so creates and releases interleave:
  *
  *   for each datastructure: create → create version → release version → release structure
- *   → create datasource (links the released version) → release datasource
+ *   → create datasource (version NOT linked yet) → PATCH the released version onto
+ *     it → release datasource
  *   → create dataset (DRAFT) → create datasink (BEFORE the pipeline — the pipeline
- *     links it) → create pipeline (links datasource + datasink)
+ *     links it) → create mapping → create pipeline (links datasource + datasink,
+ *     references source/mapping/sink by minted URN)
  *   → stage (DRAFT→READY) → release (READY→AVAILABLE, async saga)
  *   → poll until `pendingSagaType` clears, then read the true outcome
  *     (AVAILABLE = provisioned; READY = saga failed and was compensated)
+ *   → register the demo simulation, but only once AVAILABLE (MQTT keeps no
+ *     history: anything published before NiFi subscribed is lost, and that failure
+ *     is indistinguishable from a broken pipeline)
+ *
+ * Ids are not knowable in advance: every artifact's URN is minted by the server, so
+ * each create's response feeds the next payload. That ref-map is what the sequence
+ * is really carrying.
  *
  * If ANY step throws mid-sequence, everything created so far is torn down again
  * (best-effort, same bottom-up cascade as uninstall) before the error propagates —
@@ -63,6 +87,12 @@ export interface InstallDeps {
   store: InstallStore;
   fetchBundle: (source: UseCase["source"]) => Promise<UseCaseBundle>;
   now: () => Date;
+  /**
+   * The demo data generator. Optional on purpose: an instance without it installs
+   * use cases normally and simply offers no demo data — a *demo tool* must not
+   * become a hard dependency of the install path.
+   */
+  simulator?: SimulatorClient;
   /** Post-release saga polling; injectable so tests run in milliseconds. */
   poll?: { intervalMs: number; timeoutMs: number };
   /**
@@ -100,6 +130,7 @@ export function defaultInstallDeps(): InstallDeps {
     store: getInstallStore(),
     fetchBundle: fetchUseCaseBundle,
     now: () => new Date(),
+    simulator: createSimulatorClient(),
     // Return PROVISIONING immediately; the installed view polls the saga outcome.
     awaitSaga: false,
   };
@@ -110,6 +141,214 @@ function step(label: string, method: string, path: string, status: number): Prov
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Where an installed use case's data lands.
+ *
+ * PostGIS, not FROST — for one reason: the FROST sink in passthrough mode accepts
+ * only the SensorThings envelope (`{things:[…], observations:[…]}`), which is not
+ * what a sensor emits and not what the demo generator produces. PostGIS takes the
+ * device's own flat record, so a real sensor is a drop-in replacement for the
+ * simulation. The FROST route needs mapped mode and is a separate piece of work.
+ */
+const INSTALL_SINK_TYPE: DatasinkType = "POSTGIS";
+
+/** The element everything wires to, plus the ids and URNs already minted for it. */
+interface PrimaryElement {
+  structureId: string;
+  versionId: string;
+  /** URN-safe name — the same one the backend minted the URN from. */
+  name: string;
+  /** Minted model URN: the sink's `element` and the mapping's `source`/`target`. */
+  elementUrn: string;
+  /** The element's JSON Schema, from the bundle — the mapping is derived from it. */
+  schema: Record<string, unknown>;
+}
+
+/**
+ * Resolve the use case's primary element from what the install has created so far.
+ * Everything here is server-minted, so a missing piece means an earlier step's
+ * response did not carry what it was supposed to — better to say so than to send
+ * `undefined` into a payload and debug a saga.
+ */
+function resolvePrimaryElement(
+  useCase: UseCase,
+  bundle: UseCaseBundle,
+  resources: ProvisionedResources,
+): PrimaryElement {
+  const structure = resources.dataStructures.at(-1);
+  const element = bundle.elements.at(-1);
+  if (!structure || !element) {
+    throw new PortalBackendError(
+      `Use case ${useCase.id}: bundle contains no datastructures to install.`,
+      422,
+    );
+  }
+  if (!structure.modelUrn) {
+    throw new PortalBackendError(
+      `Use case ${useCase.id}: the portal-backend did not return a model URN for ` +
+        `${structure.name}, so the pipeline's sink and mapping cannot reference it.`,
+      502,
+    );
+  }
+  return {
+    structureId: structure.id,
+    versionId: structure.versionId,
+    name: toUrnSafeName(structure.name),
+    elementUrn: structure.modelUrn,
+    schema: element.schema,
+  };
+}
+
+/**
+ * Create → PATCH → release the datasource, returning its minted `configurationUrn`
+ * (the pipeline's `sourceRef`). Shared by install and activation.
+ */
+async function provisionDataSource(
+  d: InstallDeps,
+  useCase: UseCase,
+  bundle: UseCaseBundle,
+  dataSource: InstallOptions["dataSource"],
+  resources: ProvisionedResources,
+  steps: ProvisioningStep[],
+  /** Prefixes the trace labels, so a later activation is distinguishable from the install. */
+  labelPrefix = "",
+): Promise<string> {
+  const primary = resources.dataStructures.at(-1);
+  const created = await d.client.createDatasource(
+    toDatasourceBody(useCase, bundle, dataSource.mode === "own" ? dataSource.config : undefined),
+  );
+  resources.dataSourceId = created.id;
+  steps.push(
+    step(
+      `${labelPrefix}${dataSource.mode === "own" ? "datasource (own broker)" : "datasource (demo broker)"}`,
+      "POST",
+      "/datasources",
+      created.status,
+    ),
+  );
+
+  const patchStatus = await d.client.patchDatasource(created.id, {
+    dataStructureVersionId: primary?.versionId,
+  });
+  steps.push(step("attach datastructure version", "PATCH", `/datasources/${created.id}`, patchStatus));
+
+  const releaseStatus = await d.client.releaseDatasource(created.id);
+  steps.push(step("release datasource", "POST", `/datasources/${created.id}/release`, releaseStatus));
+
+  const configurationUrn = readConfigurationUrn(created.body);
+  if (!configurationUrn) {
+    throw new PortalBackendError(
+      "The portal-backend did not return a configuration URN for the data source, so the pipeline cannot reference it.",
+      502,
+    );
+  }
+  return configurationUrn;
+}
+
+/**
+ * Sink → mapping → pipeline. Strictly ordered: the sink must exist before the
+ * pipeline can list it, and both the sink's and the mapping's minted URNs go into
+ * the pipeline graph, so nothing here can be built in advance.
+ */
+async function provisionFlow(
+  d: InstallDeps,
+  useCase: UseCase,
+  bundle: UseCaseBundle,
+  datasetId: string,
+  primary: PrimaryElement,
+  sourceRef: string,
+  resources: ProvisionedResources,
+  steps: ProvisioningStep[],
+): Promise<void> {
+  const tableName = demoTableName(useCase.id);
+
+  const datasink = await d.client.createDatasink(
+    datasetId,
+    toDatasinkBody(primary.elementUrn, INSTALL_SINK_TYPE, tableName),
+  );
+  resources.dataSinkId = datasink.id;
+  steps.push(
+    step(`datasink (${INSTALL_SINK_TYPE} → ${tableName})`, "POST", `/datasets/${datasetId}/datasinks`, datasink.status),
+  );
+  const sinkRef = readConfigurationUrn(datasink.body);
+  if (!sinkRef) {
+    throw new PortalBackendError(
+      "The portal-backend did not return a configuration URN for the data sink, so the pipeline cannot reference it.",
+      502,
+    );
+  }
+
+  // The mapping translates nothing (source structure == target structure) — it is
+  // there because a storage sink's `element` is only ever filled from a mapping's
+  // target, and the pipeline refuses to save without it. See toMappingBody.
+  const mappingBody = toMappingBody(primary.elementUrn, primary.schema, `${primary.name}-identity`);
+  const mapping = await d.client.createMapping(mappingBody);
+  resources.mappingLogicalUrn = mapping.logicalUrn;
+  steps.push(step("mapping (identity)", "POST", "/mappings", 200));
+
+  const refs: PipelineRefs = {
+    sourceRef,
+    mappingRef: mapping.versionedUrn,
+    sinkRef,
+    dataSourceId: resources.dataSourceId!,
+    dataSinkId: datasink.id,
+    sinkType: INSTALL_SINK_TYPE,
+    tableName,
+  };
+  const pipeline = await d.client.createPipeline(
+    datasetId,
+    toPipelineBody(bundle, refs, { ...mappingBody, positions: {} }, {
+      id: primary.structureId,
+      versionId: primary.versionId,
+      name: primary.name,
+    }),
+  );
+  resources.pipelineId = pipeline.id;
+  steps.push(step("pipeline", "POST", `/datasets/${datasetId}/pipelines`, pipeline.status));
+}
+
+/**
+ * Start the demo data flowing — best-effort, and only once the dataset is really
+ * AVAILABLE. Earlier is worse than useless: MQTT keeps no history, so everything
+ * published before NiFi has subscribed is lost, and the symptom (an empty table)
+ * is indistinguishable from a broken pipeline.
+ *
+ * Never for `own`: publishing test traffic onto a municipality's real broker is
+ * not ours to do. Never a thrown error: the install has already succeeded.
+ */
+async function registerSimulation(
+  d: InstallDeps,
+  record: InstalledUseCase,
+): Promise<InstalledUseCase> {
+  if (!d.simulator) return record;
+  if (record.dataSourceMode !== "demo") return record;
+  if (record.status !== "AVAILABLE") return record;
+  if (record.simulation && !record.simulation.error) return record;
+
+  const scenario = scenarioFor(record.useCaseId);
+  // No scenario means no demo mode for this use case. We never fabricate one from
+  // the JSON Schema: it produces `vehicleCount: 0` forever, or four million cars a
+  // minute — worse than showing nothing.
+  if (!scenario) return record;
+
+  const topic = demoTopic(record.useCaseId);
+  const outcome = await d.simulator.register(record.id, {
+    brokerUrl: simulatorBrokerUrl(),
+    topic,
+    scenario,
+  });
+
+  return {
+    ...record,
+    simulation: {
+      id: record.id,
+      topic,
+      registeredAt: d.now().toISOString(),
+      ...(outcome.ok ? {} : { error: outcome.error }),
+    },
+  };
+}
 
 /**
  * Provision a use case via the portal-backend, recording the install locally.
@@ -171,7 +410,14 @@ export async function installUseCase(
         step(`datastructure version ${ds.name}@${ds.version}`, "POST", `/datastructures/${created.id}/versions`, version.status),
       );
       // Track as soon as both ids exist — a failure below must clean this up too.
-      partial.dataStructures.push({ id: created.id, versionId: version.id, name: ds.name, version: ds.version });
+      // The minted `modelUrn` comes back on THIS response and nowhere else.
+      partial.dataStructures.push({
+        id: created.id,
+        versionId: version.id,
+        name: ds.name,
+        version: ds.version,
+        modelUrn: readModelUrn(version.body) ?? undefined,
+      });
 
       const versionRelease = await d.client.releaseDatastructureVersion(created.id, version.id);
       steps.push(
@@ -184,14 +430,11 @@ export async function installUseCase(
       );
     }
 
-    // The version the datasource + FROST sink wire to. The bundle's
-    // `dataStructureRefs` are in DEPENDENCY order ("a referenced element comes
-    // before its user" — see bundle.ts), so the top-level record the use case is
-    // about comes LAST. TODO(content): make this an explicit bundle field.
-    const primaryVersionId = partial.dataStructures.at(-1)?.versionId;
-    if (!primaryVersionId) {
-      throw new Error(`Use case ${useCase.id}: bundle contains no datastructures to install.`);
-    }
+    // The structure the datasource, the mapping and the sink all wire to. The
+    // bundle's `dataStructureRefs` are in DEPENDENCY order ("a referenced element
+    // comes before its user" — see bundle.ts), so the top-level record the use case
+    // is about comes LAST. TODO(content): make this an explicit bundle field.
+    const primary = resolvePrimaryElement(useCase, bundle, partial);
 
     let status: DatasetLifecycleStatus;
 
@@ -206,62 +449,21 @@ export async function installUseCase(
       steps.push(step("dataset (DRAFT — datasource deferred)", "POST", "/datasets", dataset.status));
       status = "DRAFT";
     } else {
-      // 2. Datasource — links the released version; must itself be released before
-      //    the pipeline may link it. "own" carries the user's broker config into
-      //    the backend payload (credentials never touch the record/trace — D3);
-      //    "demo" uses the preset in-cluster broker.
-      const datasource = await d.client.createDatasource(
-        toDatasourceBody(
-          useCase,
-          bundle,
-          primaryVersionId,
-          opts.dataSource.mode === "own" ? opts.dataSource.config : undefined,
-        ),
-      );
-      partial.dataSourceId = datasource.id;
-      steps.push(
-        step(
-          opts.dataSource.mode === "own" ? "datasource (own broker)" : "datasource (demo preset)",
-          "POST",
-          "/datasources",
-          datasource.status,
-        ),
-      );
-
-      const datasourceRelease = await d.client.releaseDatasource(datasource.id);
-      steps.push(step("release datasource", "POST", `/datasources/${datasource.id}/release`, datasourceRelease));
+      // 2. Datasource — created WITHOUT the version (a create-time link is
+      //    rejected), then PATCHed, then released so the pipeline may link it.
+      //    "own" carries the user's broker config into the backend payload
+      //    (credentials never touch the record/trace — D3); "demo" points at the
+      //    bundled simulation broker.
+      const sourceRef = await provisionDataSource(d, useCase, bundle, opts.dataSource, partial, steps);
 
       // 3. Dataset — created in DRAFT (the aggregate root of the use case).
       const dataset = await d.client.createDataset(toDatasetBody(bundle));
       datasetId = dataset.id;
       steps.push(step("dataset (DRAFT)", "POST", "/datasets", dataset.status));
 
-      // 4. Datasink FIRST (the pipeline links it via dataSinkIds), then the pipeline.
-      //    The sink type comes from the bundle's pipeline sink node. Only FROST is
-      //    supported/verified; a geospatial (POSTGIS / `geoPersistence`) sink needs a
-      //    non-blank `tableName` the bundle doesn't carry yet, so reject it upfront
-      //    rather than provision a sink the NiFi step fails on (→ opaque compensation
-      //    to READY). TODO(content): read the tableName off the geoPersistence node.
-      const sinkType = readSinkType(bundle.pipeline);
-      if (sinkType !== "FROST") {
-        throw new PortalBackendError(
-          `Use case ${useCase.id} declares a ${sinkType} storage sink, which the marketplace does not support yet (it needs a table name the bundle doesn't carry). Only FROST (SensorThings) sinks are supported.`,
-          501,
-        );
-      }
-      const datasink = await d.client.createDatasink(
-        datasetId,
-        toDatasinkBody(primaryVersionId, sinkType),
-      );
-      partial.dataSinkId = datasink.id;
-      steps.push(step(`datasink (${sinkType})`, "POST", `/datasets/${datasetId}/datasinks`, datasink.status));
-
-      const pipeline = await d.client.createPipeline(
-        datasetId,
-        toPipelineBody(bundle, datasource.id, datasink.id),
-      );
-      partial.pipelineId = pipeline.id;
-      steps.push(step("pipeline", "POST", `/datasets/${datasetId}/pipelines`, pipeline.status));
+      // 4. Sink → mapping → pipeline, in that order: the pipeline references all
+      //    three by minted URN, so none of it can be built ahead of time.
+      await provisionFlow(d, useCase, bundle, datasetId, primary, sourceRef, partial, steps);
 
       // 5. Lifecycle: stage validates the pipeline wiring (DRAFT→READY)…
       const stageStatus = await d.client.stageDataset(datasetId);
@@ -346,8 +548,13 @@ export async function installUseCase(
       provisionedResources: partial,
     } satisfies InstalledUseCase);
 
-    await d.store.save(record);
-    return { record, created: true };
+    // Demo data, if this install is already live. In the app it never is yet
+    // (`awaitSaga: false` returns at PROVISIONING), so the usual entry point is
+    // `refreshInstalledUseCaseStatus` — this branch covers the blocking callers.
+    const withSimulation = await registerSimulation(d, record);
+
+    await d.store.save(withSimulation);
+    return { record: withSimulation, created: true };
   } catch (error) {
     // Roll back whatever this attempt created (best-effort): without a stored
     // record these resources would be invisible to uninstall AND to the
@@ -374,6 +581,12 @@ export async function uninstallUseCase(useCaseId: string, deps?: InstallDeps): P
 
   const record = await d.store.get(useCaseId);
   if (!record) return false;
+
+  // Stop the demo data FIRST, and best-effort: publishing into a half-torn-down
+  // pipeline is noise, and an unreachable generator must not block an uninstall.
+  if (record.simulation && d.simulator) {
+    await d.simulator.unregister(record.simulation.id);
+  }
 
   await teardownBackendResources(d, record.id, record.provisionedResources);
   await d.store.remove(useCaseId);
@@ -429,19 +642,14 @@ export async function activateInstalledUseCase(
 
   if (state.backendStatus === "DRAFT") {
     const bundle = await d.fetchBundle(useCase.source);
-    const primaryVersionId = resources.dataStructures.at(-1)?.versionId;
-    if (!primaryVersionId) {
-      throw new PortalBackendError(
-        "Die Installation trägt keine Datenstruktur-Versionen — der Entwurf kann nicht vervollständigt werden.",
-        500,
-      );
-    }
+    const primary = resolvePrimaryElement(useCase, bundle, resources);
 
     // Leftovers from a previously failed activation attempt: remove them first
     // (best-effort), then build fresh — re-linking half-created children is not
     // worth the complexity.
     const leftovers = record.provisionedResources;
     if (leftovers?.pipelineId) await d.client.deletePipeline(record.id, leftovers.pipelineId).catch(() => undefined);
+    if (leftovers?.mappingLogicalUrn) await d.client.deleteMapping(leftovers.mappingLogicalUrn).catch(() => undefined);
     if (leftovers?.dataSinkId) await d.client.deleteDatasink(record.id, leftovers.dataSinkId).catch(() => undefined);
     if (leftovers?.dataSourceId) {
       await d.client.unreleaseDatasource(leftovers.dataSourceId).catch(() => undefined);
@@ -449,46 +657,16 @@ export async function activateInstalledUseCase(
     }
 
     try {
-      const datasource = await d.client.createDatasource(
-        toDatasourceBody(
-          useCase,
-          bundle,
-          primaryVersionId,
-          opts.dataSource.mode === "own" ? opts.dataSource.config : undefined,
-        ),
+      const sourceRef = await provisionDataSource(
+        d,
+        useCase,
+        bundle,
+        opts.dataSource,
+        resources,
+        steps,
+        "activate: ",
       );
-      resources.dataSourceId = datasource.id;
-      steps.push(
-        step(
-          opts.dataSource.mode === "own"
-            ? "activate: datasource (own broker)"
-            : "activate: datasource (demo preset)",
-          "POST",
-          "/datasources",
-          datasource.status,
-        ),
-      );
-
-      const datasourceRelease = await d.client.releaseDatasource(datasource.id);
-      steps.push(step("release datasource", "POST", `/datasources/${datasource.id}/release`, datasourceRelease));
-
-      const sinkType = readSinkType(bundle.pipeline);
-      if (sinkType !== "FROST") {
-        throw new PortalBackendError(
-          `Use case ${useCase.id} declares a ${sinkType} storage sink, which the marketplace does not support yet. Only FROST (SensorThings) sinks are supported.`,
-          501,
-        );
-      }
-      const datasink = await d.client.createDatasink(record.id, toDatasinkBody(primaryVersionId, sinkType));
-      resources.dataSinkId = datasink.id;
-      steps.push(step(`datasink (${sinkType})`, "POST", `/datasets/${record.id}/datasinks`, datasink.status));
-
-      const pipeline = await d.client.createPipeline(
-        record.id,
-        toPipelineBody(bundle, datasource.id, datasink.id),
-      );
-      resources.pipelineId = pipeline.id;
-      steps.push(step("pipeline", "POST", `/datasets/${record.id}/pipelines`, pipeline.status));
+      await provisionFlow(d, useCase, bundle, record.id, primary, sourceRef, resources, steps);
 
       const stageStatus = await d.client.stageDataset(record.id);
       steps.push(step("stage (DRAFT→READY)", "POST", `/datasets/${record.id}/stage`, stageStatus));
@@ -506,6 +684,7 @@ export async function activateInstalledUseCase(
     resources.dataSourceId = record.provisionedResources?.dataSourceId;
     resources.dataSinkId = record.provisionedResources?.dataSinkId;
     resources.pipelineId = record.provisionedResources?.pipelineId;
+    resources.mappingLogicalUrn = record.provisionedResources?.mappingLogicalUrn;
   }
 
   let status: DatasetLifecycleStatus = "READY";
@@ -530,7 +709,7 @@ export async function activateInstalledUseCase(
     }
   }
 
-  const updated = appendActivation(record, resources, steps, status);
+  const updated = await registerSimulation(d, appendActivation(record, resources, steps, status));
   await d.store.save(updated);
   return updated;
 }
@@ -613,6 +792,9 @@ async function teardownBackendResources(
       }
 
       if (resources?.pipelineId) await deps.client.deletePipeline(datasetId, resources.pipelineId);
+      // After the pipeline, before the sink: `force` unlinks the mapping from any
+      // dataset still referencing it, so a leftover `mappingRef` cannot block it.
+      if (resources?.mappingLogicalUrn) await deps.client.deleteMapping(resources.mappingLogicalUrn);
       if (resources?.dataSinkId) await deps.client.deleteDatasink(datasetId, resources.dataSinkId);
       await deps.client.deleteDataset(datasetId);
     }
@@ -633,6 +815,13 @@ async function teardownBackendResources(
 /**
  * Best-effort live status for a stored install (used by the installed-list view).
  * Falls back to the record's stored status if the backend has no newer state.
+ *
+ * This is also where demo data starts. The app installs asynchronously
+ * (`awaitSaga: false`), so at install time the dataset is still PROVISIONING and
+ * NiFi has not subscribed yet; this poll is the first moment AVAILABLE is known,
+ * and registering any earlier would publish into a broker nobody is listening to.
+ * The updated record is persisted, so the registration happens once, not on every
+ * poll.
  */
 export async function refreshInstalledUseCaseStatus(
   record: InstalledUseCase,
@@ -641,11 +830,23 @@ export async function refreshInstalledUseCaseStatus(
   const d = deps ?? defaultInstallDeps();
   const live = await d.client.getDataset(record.id);
   const status = live === null ? record.status : (toLifecycleStatus(readDatasetState(live)) ?? record.status);
-  if (status === record.status) return record;
+
+  if (status === record.status) {
+    // A retry path: the status is settled but a previous registration failed (the
+    // generator was down). Trying again here costs one call and makes the demo
+    // self-healing once it comes back.
+    const retried = await registerSimulation(d, record);
+    if (retried !== record) await d.store.save(retried).catch(() => undefined);
+    return retried;
+  }
+
   // The status settled since the record was written (e.g. the async install
   // returned PROVISIONING and the saga has now finished): carry the new status
   // AND complete the trace with the saga-outcome step the async path left off.
-  return withStatus(withSagaOutcomeStep(record, status), status);
+  const settled = withStatus(withSagaOutcomeStep(record, status), status);
+  const withSimulation = await registerSimulation(d, settled);
+  await d.store.save(withSimulation).catch(() => undefined);
+  return withSimulation;
 }
 
 /**

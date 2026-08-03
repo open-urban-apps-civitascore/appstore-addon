@@ -58,6 +58,28 @@ export function UseCaseInstallationCard({
         </div>
       </div>
 
+      {/* Is data actually flowing? The one question someone has right after
+          installing, and the one an empty screen cannot answer. */}
+      {installation.simulation ? (
+        <p
+          className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+            installation.simulation.error
+              ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+              : "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+          }`}
+        >
+          <span aria-hidden>{installation.simulation.error ? "⚠" : "●"}</span>
+          {installation.simulation.error ? (
+            <>Demo-Daten konnten nicht gestartet werden: {installation.simulation.error}</>
+          ) : (
+            <>
+              Demo-Daten laufen — alle zehn Sekunden ein Messwert auf{" "}
+              <code className="font-mono text-xs">{installation.simulation.topic}</code>
+            </>
+          )}
+        </p>
+      ) : null}
+
       {/* Once the use case is live, show the working thing rather than an empty
           shell. Only for a running installation that declares a dashboard. */}
       {installation.status === "AVAILABLE" &&

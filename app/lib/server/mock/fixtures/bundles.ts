@@ -381,7 +381,46 @@ const FEINSTAUB_BUNDLE: UseCaseBundle = {
   source: { repoUrl: "https://gitlab.com/civitascore-openurbanapps/commune-mittelerde-feinstaub", gitIdentifier: "v1.0.0" },
 };
 
+/**
+ * The pilot: one counting station, three flat fields, no geometry. A copy of
+ * `dev-catalog/commune-mittelerde-hello`, embedded so mock mode needs no server.
+ *
+ * The other three bundles all carry a nested `location` that `$ref`s a separate
+ * `GeoPoint` structure, and the install path refuses those up front (geometry plus
+ * a cross-structure reference). Keeping them here is deliberate: mock mode should
+ * show that refusal, not hide it.
+ */
+const HELLO_BUNDLE: UseCaseBundle = {
+  dataset: {
+    id: "urn:core:platform:civitas:dataset:common:HelloTrafficCounter:1.0.0",
+    title: "Verkehrszählung Hauptstraße (Demo)",
+    description:
+      "Eine einzelne Zählstelle, drei Felder, Demo-Daten ab Installation.",
+    version: "1.0.0",
+    dataStructureRefs: ["urn:core:platform:civitas:datastructure:mobility:TrafficCount:1.0.0"],
+  },
+  elements: [
+    {
+      ref: "urn:core:platform:civitas:datastructure:mobility:TrafficCount:1.0.0",
+      schema: {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        $id: "urn:core:platform:civitas:datastructure:mobility:TrafficCount:1.0.0",
+        title: "TrafficCount",
+        type: "object",
+        required: ["counterId", "timestamp", "vehicleCount"],
+        properties: {
+          counterId: { type: "string", description: "Kennung der Zählstelle." },
+          timestamp: { type: "string", format: "date-time", description: "Zeitpunkt der Messung." },
+          vehicleCount: { type: "integer", minimum: 0, description: "Anzahl gezählter Fahrzeuge." },
+        },
+      },
+    },
+  ],
+  source: { repoUrl: "http://localhost:8099/commune-mittelerde-hello", gitIdentifier: "v1.0.0" },
+};
+
 export const mockBundlesByRepoUrl: Record<string, UseCaseBundle> = {
+  [HELLO_BUNDLE.source.repoUrl]: HELLO_BUNDLE,
   [TRAFFICCOUNTER_BUNDLE.source.repoUrl]: TRAFFICCOUNTER_BUNDLE,
   [BAUMKATASTER_BUNDLE.source.repoUrl]: BAUMKATASTER_BUNDLE,
   [FEINSTAUB_BUNDLE.source.repoUrl]: FEINSTAUB_BUNDLE,

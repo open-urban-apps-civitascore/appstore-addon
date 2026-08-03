@@ -41,3 +41,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 data/installed-use-cases.json
+
+# Local install store — which use cases THIS machine has installed, and the ids
+# of what they provisioned. Runtime state, never shared.
+.data/

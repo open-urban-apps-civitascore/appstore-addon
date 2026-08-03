@@ -1,0 +1,67 @@
+{
+  "$schema": "https://raw.githubusercontent.com/open-urban-apps-civitascore/appstore-addon/main/app/data/index.schema.json",
+  "version": "0.1.0-dev",
+  "updatedAt": "2026-08-03T09:00:00Z",
+  "addons": [],
+  "useCases": [
+    {
+      "id": "hello-trafficcounter",
+      "title": "Verkehrszählung Hauptstraße (Demo)",
+      "summary": "Eine Zählstelle, drei Felder, Demo-Daten ab Installation — der kleinste Use Case, der die ganze Kette beweist.",
+      "description": "Eine einzelne Verkehrszählstelle mit drei Feldern: Kennung, Zeitpunkt, Fahrzeuganzahl. Bewusst flach und ohne Geometrie. Mit »Demo-Daten« installiert, liefert der Datengenerator ab dem ersten Moment alle zehn Sekunden einen Messwert.",
+      "publisher": "Kommune Mittelerde",
+      "categories": ["Mobilität", "Verkehr"],
+      "maturity": "prototype",
+      "installability": "direct",
+      "compatibility": ["2.0", "2.1"],
+      "requiredCapabilities": ["PORTAL_BACKEND"],
+      "installQuestions": [],
+      "includedArtifacts": [
+        {
+          "id": "urn:core:platform:civitas:dataset:common:HelloTrafficCounter:1.0.0",
+          "title": "Verkehrszählung Hauptstraße",
+          "kind": "dataset",
+          "description": "Datensatz für eine einzelne Zählstelle."
+        },
+        {
+          "id": "urn:core:platform:civitas:datastructure:mobility:TrafficCount:1.0.0",
+          "title": "TrafficCount",
+          "kind": "datastructure",
+          "description": "Kennung, Zeitpunkt, Fahrzeuganzahl — flach, ohne Geometrie."
+        }
+      ],
+      "source": {
+        "repoUrl": "http://localhost:8099/commune-mittelerde-hello",
+        "gitIdentifier": "v1.0.0"
+      },
+      "trust": {
+        "maintainer": {
+          "name": "Kommune Mittelerde",
+          "contactUrl": "http://localhost:8099/commune-mittelerde-hello"
+        },
+        "productionReferences": [],
+        "curatedBy": "Entwicklungs-Katalog (lokal)",
+        "curatedAt": "2026-08-03",
+        "license": "EUPL-1.2"
+      },
+      "requirements": {
+        "coreVersions": ["2.0", "2.1"],
+        "components": ["PORTAL_BACKEND", "NIFI", "POSTGIS", "GEOSERVER"],
+        "connectors": ["MQTT"]
+      },
+      "provides": [
+        {
+          "kind": "api",
+          "label": "Zählwerte als Tabelle",
+          "standard": "PostGIS",
+          "note": "Eine Zeile je Messung, direkt abfragbar."
+        }
+      ],
+      "roles": [],
+      "modelForge": {
+        "datasetId": "urn:core:platform:civitas:dataset:common:HelloTrafficCounter:1.0.0",
+        "note": "Beim Installieren legt der Marketplace die Datenstruktur, die Datenquelle, das Mapping, die Senke und die Pipeline über das CivitasCore Portal-Backend an."
+      }
+    }
+  ]
+}

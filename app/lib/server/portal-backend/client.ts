@@ -44,6 +44,20 @@ export interface CreatedResource {
   body: unknown;
 }
 
+/**
+ * The URN pins Model Forge mints for an artifact. Returned by `POST /mappings`,
+ * which — unlike every other create — answers `200` with the pins in the BODY and
+ * no `Location` header, because a Mapping has no portal-side id to link: pipeline
+ * nodes reference it by `mappingRef` = {@link versionedUrn}. [verified 2026-08-03]
+ */
+export interface MappingPins {
+  /** Version-less URN — the handle for versioning and deleting the mapping. */
+  logicalUrn: string;
+  /** Versioned URN — what a pipeline's mapping node references. */
+  versionedUrn: string;
+  version: string;
+}
+
 export class PortalBackendClient {
   private readonly baseUrl: string;
   private readonly authProvider: PortalBackendAuthHeaderProvider;
@@ -197,9 +211,33 @@ export class PortalBackendClient {
 
   // ── Datasources ──────────────────────────────────────────────────────────────
 
-  /** `POST /datasources`. */
+  /**
+   * `POST /datasources`. The body must carry `dataStructureVersionId: null` — a
+   * create-time link is rejected; the version is attached afterwards with
+   * {@link patchDatasource}. [verified 2026-08-03]
+   */
   async createDatasource(payload: unknown): Promise<CreatedResource> {
     return this.postResource("/datasources", payload, "datasource");
+  }
+
+  /**
+   * `PATCH /datasources/{id}` → status. The only way to attach the released
+   * datastructure version, which the datasource needs before it may be released.
+   *
+   * A `404` here is a trap worth knowing: the backend reports "DataSource with id
+   * '<versionId>' not found" both when the version is genuinely absent AND when the
+   * caller may not reference it (deliberately indistinguishable — otherwise the
+   * 404-vs-403 split would be an existence oracle over version ids). In practice on
+   * the dev stack it means the bearer token carries no `sub` claim, so the backend
+   * cannot map it to a user at all — see auth.ts.
+   */
+  async patchDatasource(datasourceId: string, payload: unknown): Promise<number> {
+    const path = `/datasources/${encodeURIComponent(datasourceId)}`;
+    const response = await this.request("PATCH", path, payload);
+    if (!response.ok) {
+      throw await this.responseError(response, `Portal-backend PATCH ${path} (datasource-version)`);
+    }
+    return response.status;
   }
 
   /**
@@ -224,6 +262,46 @@ export class PortalBackendClient {
   /** `DELETE /datasources/{id}`. 404 is treated as success. */
   async deleteDatasource(datasourceId: string): Promise<void> {
     await this.deleteResource(`/datasources/${encodeURIComponent(datasourceId)}`, "datasource");
+  }
+
+  // ── Mappings (first-class CORE artifacts, stored in Model Forge) ─────────────
+
+  /**
+   * `POST /mappings` → the minted URN pins. Cannot go through {@link postResource}:
+   * this endpoint answers **200** with the pins in the body and no `Location`
+   * header, so there is no id to parse. [verified 2026-08-03]
+   */
+  async createMapping(payload: unknown): Promise<MappingPins> {
+    const response = await this.request("POST", "/mappings", payload);
+    if (!response.ok) {
+      throw await this.responseError(response, "Portal-backend POST /mappings (mapping)");
+    }
+    const body = await this.readBody(response);
+    const pins = body as Partial<MappingPins> | null;
+    if (!pins?.logicalUrn || !pins.versionedUrn) {
+      throw new PortalBackendError(
+        "Portal-backend POST /mappings returned no URN pins — the pipeline cannot reference the mapping.",
+        502,
+      );
+    }
+    return {
+      logicalUrn: pins.logicalUrn,
+      versionedUrn: pins.versionedUrn,
+      version: pins.version ?? "",
+    };
+  }
+
+  /**
+   * `DELETE /mappings?urn=…&force=true` — by URN, not by id. `force` unlinks the
+   * mapping from any pipeline still referencing it; without it the delete is
+   * rejected while a `mappingRef` survives, which during teardown is exactly the
+   * state we are in. 404 is treated as success.
+   */
+  async deleteMapping(urn: string, force = true): Promise<void> {
+    await this.deleteResource(
+      `/mappings?urn=${encodeURIComponent(urn)}&force=${force}`,
+      "mapping",
+    );
   }
 
   // ── Datasets (the aggregate root of a use case) ──────────────────────────────
