@@ -78,19 +78,8 @@ export const CURATION_CHECKS: CurationCheck[] = [
   },
 ];
 
-export type BadgeLevel = "experimental" | "community" | "verified";
-
-export const BADGE_LEVEL_LABELS: Record<BadgeLevel, string> = {
-  experimental: "Experimentell",
-  community: "Community",
-  verified: "Verifiziert",
-};
-
-export const BADGE_LEVEL_HINTS: Record<BadgeLevel, string> = {
-  experimental: "Läuft, ist aber nirgends produktiv erprobt.",
-  community: "Von einer Kommune gepflegt und mindestens einmal produktiv im Einsatz.",
-  verified: "Zusätzlich fachlich geprüft und mit belastbaren Referenzen.",
-};
+// The badge the curator assigns IS the catalog's curation tier — one shared
+// vocabulary, defined in `types/curation-tier.ts` (labels, hints, criteria).
 
 export type Submission = {
   id: string;

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { curationTierSchema, deprecationSchema, type CurationTier } from './curation-tier';
+
 export const deploymentRefSchema = z.object({
   type: z
     .enum(['helm', 'git', 'bundle'])
@@ -58,6 +60,16 @@ export const addonSchema = z.object({
     .optional()
     .describe("List of required platform capabilities or connectors (e.g., 'KEYCLOAK', 'APISIX_INGRESS')"),
   deploymentRef: deploymentRefSchema,
+  curationTier: curationTierSchema
+    .optional()
+    .describe(
+      'Curation tier assigned by the catalog curator (experimental | community | verified); treated as experimental when absent'
+    ),
+  deprecated: deprecationSchema
+    .optional()
+    .describe(
+      'Deprecation overlay: the entry stays visible but warns, optionally pointing to a successor id'
+    ),
   revoked: z
     .boolean()
     .optional()
@@ -73,6 +85,11 @@ export const addonCatalogSchema = z.object({
   updatedAt: z.string().datetime(),
   addons: z.array(addonSchema)
 });
+
+// Add-ons authored before the trust vocabulary existed carry no tier — the
+// safest reading is "unreviewed".
+export const addonCurationTier = (addon: { curationTier?: CurationTier }): CurationTier =>
+  addon.curationTier ?? 'experimental';
 
 // Infer TypeScript types directly from the Zod schemas
 export type DeploymentRef = z.infer<typeof deploymentRefSchema>;

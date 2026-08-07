@@ -12,8 +12,8 @@ function useCase(overrides: Partial<UseCase> = {}): UseCase {
     summary: "s",
     description: "d",
     publisher: "Teststadt",
-    maturity: "prototype",
-    installability: "direct",
+    curationTier: "experimental",
+    installPath: "portal",
     compatibility: ["2.1"],
     includedArtifacts: [
       { id: "urn:a", title: "TestStructure", kind: "datastructure" },

@@ -7,6 +7,8 @@ import { DemoDataPreview } from "@/components/use-cases/demo-data-preview";
 import { ProvidedSurfaces } from "@/components/use-cases/provided-surfaces";
 import { RemoveInstalledUseCaseButton } from "@/components/use-cases/remove-installed-use-case-button";
 import { SwitchDataSourceButton } from "@/components/use-cases/switch-data-source-button";
+import { DeprecatedNotice } from "@/components/use-cases/use-case-status";
+import { type Deprecation } from "@/types/curation-tier";
 import {
   DATASET_LIFECYCLE_STATUS_LABELS,
   INSTALLED_USE_CASE_SOURCE_LABELS,
@@ -26,13 +28,18 @@ function formatTimestamp(value: string): string {
 export function UseCaseInstallationCard({
   installation,
   surfaces = [],
+  deprecation,
 }: {
   installation: InstalledUseCase;
   /** What the catalog entry declares this use case provides, if it is still listed. */
   surfaces?: ProvidedSurface[];
+  /** Set when the catalog has meanwhile deprecated this entry — deprecation
+      must reach the instances that already installed it. */
+  deprecation?: Deprecation;
 }) {
   return (
     <article className="flex flex-col gap-4 rounded-md border bg-card p-5">
+      {deprecation ? <DeprecatedNotice deprecation={deprecation} /> : null}
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-foreground">{installation.useCaseTitle}</h2>

@@ -8,10 +8,12 @@ import { AddonIcon } from "@/components/catalog/addon-icon";
 import { MarketplacePageShell } from "@/components/marketplace/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DeprecatedNotice, TierBadge } from "@/components/use-cases/use-case-status";
 import { getCatalog } from "@/lib/getCatalog";
 import { getMarketplaceText } from "@/lib/marketplace-text";
 import { publisherSlug } from "@/lib/slug";
-import type { Addon } from "@/types/addons";
+import { INSTALL_PATH_LABELS } from "@/types/curation-tier";
+import { addonCurationTier, type Addon } from "@/types/addons";
 
 // Turn the deployment reference into a copy-ready install snippet, mirroring
 // how the upstream add-ons are activated (git clone + inventory entry, or helm).
@@ -79,13 +81,17 @@ export default async function AddonDetailPage({
 }) {
   const text = getMarketplaceText();
   const { id } = await params;
-  const addon = (await getCatalog()).addons.find((entry) => entry.id === id);
+  const catalog = await getCatalog();
+  const addon = catalog.addons.find((entry) => entry.id === id);
 
   if (!addon) {
     notFound();
   }
 
   const coreVersions = addon.compatibility.map((entry) => entry.coreVersion);
+  const successor = addon.deprecated?.successorId
+    ? catalog.addons.find((entry) => entry.id === addon.deprecated?.successorId)
+    : undefined;
 
   return (
     <MarketplacePageShell
@@ -101,14 +107,25 @@ export default async function AddonDetailPage({
           {text.catalog.backToCatalog}
         </Link>
 
+        {addon.deprecated ? (
+          <DeprecatedNotice
+            deprecation={addon.deprecated}
+            successorHref={successor ? `/marketplace/addons/${successor.id}` : undefined}
+            successorTitle={successor?.name}
+          />
+        ) : null}
+
         {/* Hero */}
         <section className="rounded-xl border border-t-2 border-t-primary bg-card p-6">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex gap-4">
               <AddonIcon name={addon.name} className="size-14 rounded-xl text-lg" />
               <div className="flex flex-col gap-2">
-                <span className="font-mono text-xs font-semibold uppercase tracking-wider text-primary">
-                  {text.detail.addonKindLabel}
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-xs font-semibold uppercase tracking-wider text-primary">
+                    {text.detail.addonKindLabel}
+                  </span>
+                  <TierBadge tier={addonCurationTier(addon)} />
                 </span>
                 <h1 className="text-2xl font-bold leading-tight text-foreground">{addon.name}</h1>
                 <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
@@ -180,6 +197,11 @@ export default async function AddonDetailPage({
             <section className="rounded-md border bg-card p-5">
               <h2 className="text-sm font-semibold text-foreground">{text.detail.details}</h2>
               <dl className="mt-3">
+                {/* A fact, not a grade: add-on installs are a GitOps change by
+                    the platform operator — never 1-click. */}
+                <DetailRow label={text.detail.installPathLabel}>
+                  {INSTALL_PATH_LABELS.operator}
+                </DetailRow>
                 <DetailRow label={text.detail.publisher}>
                   <Link
                     href={`/marketplace/publishers/${publisherSlug(addon.author)}`}

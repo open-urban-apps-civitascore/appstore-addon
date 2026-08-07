@@ -133,6 +133,30 @@
               "url"
             ]
           },
+          "curationTier": {
+            "description": "Curation tier assigned by the catalog curator (experimental | community | verified); treated as experimental when absent",
+            "type": "string",
+            "enum": [
+              "experimental",
+              "community",
+              "verified"
+            ]
+          },
+          "deprecated": {
+            "description": "Deprecation overlay: the entry stays visible but warns, optionally pointing to a successor id",
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "successorId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "reason"
+            ]
+          },
           "revoked": {
             "description": "Tombstone: entry withdrawn — hidden from the catalog and blocked for new installs",
             "type": "boolean"
@@ -182,6 +206,22 @@
               "type": "string"
             }
           },
+          "curationTier": {
+            "type": "string",
+            "enum": [
+              "experimental",
+              "community",
+              "verified"
+            ]
+          },
+          "installPath": {
+            "type": "string",
+            "enum": [
+              "portal",
+              "operator",
+              "adaptation"
+            ]
+          },
           "maturity": {
             "type": "string",
             "enum": [
@@ -198,6 +238,20 @@
               "experimental"
             ]
           },
+          "deprecated": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "successorId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "reason"
+            ]
+          },
           "compatibility": {
             "minItems": 1,
             "type": "array",
@@ -206,10 +260,33 @@
             }
           },
           "requiredCapabilities": {
-            "default": [],
             "type": "array",
             "items": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "addon",
+                        "plugin",
+                        "connector"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "name"
+                  ]
+                },
+                {
+                  "type": "string"
+                }
+              ]
             }
           },
           "installQuestions": {
@@ -287,6 +364,164 @@
           },
           "revokedReason": {
             "type": "string"
+          },
+          "images": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string"
+                },
+                "caption": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "url"
+              ]
+            }
+          },
+          "trust": {
+            "type": "object",
+            "properties": {
+              "maintainer": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "contactUrl": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              },
+              "productionReferences": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "municipality": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "since": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "municipality"
+                  ]
+                }
+              },
+              "curatedBy": {
+                "type": "string"
+              },
+              "curatedAt": {
+                "type": "string"
+              },
+              "license": {
+                "type": "string"
+              }
+            }
+          },
+          "provides": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "api",
+                    "dashboard",
+                    "map",
+                    "download"
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                },
+                "standard": {
+                  "type": "string"
+                },
+                "urlTemplate": {
+                  "type": "string"
+                },
+                "note": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "label"
+              ]
+            }
+          },
+          "roles": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "permissions": {
+                  "default": [],
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "key",
+                "label"
+              ]
+            }
+          },
+          "requirements": {
+            "type": "object",
+            "properties": {
+              "coreVersions": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "components": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "connectors": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "required": [
@@ -295,8 +530,6 @@
           "summary",
           "description",
           "publisher",
-          "maturity",
-          "installability",
           "compatibility",
           "modelForge",
           "source"

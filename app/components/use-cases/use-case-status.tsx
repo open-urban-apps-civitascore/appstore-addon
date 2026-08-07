@@ -1,85 +1,120 @@
-import { type ReactNode } from "react";
+import Link from "next/link";
+import { Archive, FlaskConical, type LucideIcon, ShieldCheck, Users } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { USE_CASE_MATURITY_LABELS, type UseCase } from "@/types/use-cases";
+import {
+  CURATION_TIER_LABELS,
+  type CurationTier,
+  type Deprecation,
+} from "@/types/curation-tier";
 
-// Accessible, hue-matched status colours (single source of truth). Meaning never
-// relies on colour alone (barrierefrei): every status also carries a text label
-// and a dot. Text/badge combos meet WCAG AA contrast on card/background surfaces
-// (dark hue text on a light tint; light hue text on a faint tint in dark mode).
-type Tone = "success" | "primary" | "warn" | "experimental";
+// Accessible, hue-matched status colours for the ONE graded trust vocabulary
+// (single source of truth). Meaning never relies on colour alone (barrierefrei):
+// every tier carries an icon and a text label. Text/badge combos meet WCAG AA
+// contrast on card/background surfaces. One meaning per strong colour:
+// emerald = Verifiziert, blue = Community, amber = Experimentell, gray = Veraltet.
+type Tone = "success" | "primary" | "warn" | "neutral";
 
-const TONE: Record<Tone, { dot: string; text: string; badge: string }> = {
+const TONE: Record<Tone, { text: string; badge: string }> = {
   success: {
-    dot: "bg-emerald-500",
     text: "text-emerald-700 dark:text-emerald-400",
     badge: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300",
   },
   primary: {
-    dot: "bg-blue-500",
     text: "text-blue-700 dark:text-blue-400",
     badge: "bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-300",
   },
   warn: {
-    dot: "bg-amber-500",
     text: "text-amber-800 dark:text-amber-400",
     badge: "bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-300",
   },
-  experimental: {
-    dot: "bg-violet-500",
-    text: "text-violet-700 dark:text-violet-400",
-    badge: "bg-violet-100 text-violet-800 dark:bg-violet-500/15 dark:text-violet-300",
+  neutral: {
+    text: "text-muted-foreground",
+    badge: "bg-muted text-muted-foreground",
   },
 };
 
-const MATURITY_TONE: Record<UseCase["maturity"], Tone> = {
+const TIER_TONE: Record<CurationTier, Tone> = {
   verified: "success",
-  operational: "primary",
-  prototype: "warn",
+  community: "primary",
+  experimental: "warn",
 };
 
-export const INSTALLABILITY_TONE: Record<UseCase["installability"], Tone> = {
-  direct: "success",
-  adaptation: "warn",
-  experimental: "experimental",
+const TIER_ICON: Record<CurationTier, LucideIcon> = {
+  verified: ShieldCheck,
+  community: Users,
+  experimental: FlaskConical,
 };
 
-export function StatusDot({ tone, className }: { tone: Tone; className?: string }) {
-  return (
-    <span
-      aria-hidden
-      className={cn("inline-block size-2 shrink-0 rounded-full", TONE[tone].dot, className)}
-    />
-  );
-}
-
-/** Dot + hue-coloured label. Colour is present but always paired with the text. */
-export function StatusLabel({ tone, children }: { tone: Tone; children: ReactNode }) {
-  return (
-    <span className="inline-flex items-center gap-2 text-sm font-medium">
-      <StatusDot tone={tone} />
-      <span className={TONE[tone].text}>{children}</span>
-    </span>
-  );
-}
-
-/** Maturity as a filled, colour-coded badge (dot + label) for the detail hero. */
-export function MaturityBadge({ maturity }: { maturity: UseCase["maturity"] }) {
-  const tone = MATURITY_TONE[maturity];
+/** The curation tier as a filled badge (icon + label) for detail heroes. */
+export function TierBadge({ tier }: { tier: CurationTier }) {
+  const Icon = TIER_ICON[tier];
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium",
-        TONE[tone].badge,
+        TONE[TIER_TONE[tier]].badge,
       )}
     >
-      <StatusDot tone={tone} />
-      {USE_CASE_MATURITY_LABELS[maturity]}
+      <Icon aria-hidden className="size-3.5" />
+      {CURATION_TIER_LABELS[tier]}
     </span>
   );
 }
 
-/** Maturity as dot + coloured label for compact card footers. */
-export function MaturityStatus({ maturity }: { maturity: UseCase["maturity"] }) {
-  return <StatusLabel tone={MATURITY_TONE[maturity]}>{USE_CASE_MATURITY_LABELS[maturity]}</StatusLabel>;
+/** The curation tier as icon + coloured label for compact card footers. */
+export function TierStatus({ tier }: { tier: CurationTier }) {
+  const Icon = TIER_ICON[tier];
+  return (
+    <span
+      className={cn("inline-flex items-center gap-1.5 text-sm font-medium", TONE[TIER_TONE[tier]].text)}
+    >
+      <Icon aria-hidden className="size-4 shrink-0" />
+      {CURATION_TIER_LABELS[tier]}
+    </span>
+  );
+}
+
+/** "Veraltet" as a compact status for card footers — replaces the tier there. */
+export function DeprecatedStatus() {
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 text-sm font-medium", TONE.neutral.text)}>
+      <Archive aria-hidden className="size-4 shrink-0" />
+      Veraltet
+    </span>
+  );
+}
+
+/**
+ * Deprecation banner for detail pages and the installed view. The successor is
+ * resolved by the caller (use case vs add-on live under different routes).
+ */
+export function DeprecatedNotice({
+  deprecation,
+  successorHref,
+  successorTitle,
+}: {
+  deprecation: Deprecation;
+  successorHref?: string;
+  successorTitle?: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-900/60 dark:bg-amber-950/40">
+      <Archive aria-hidden className="mt-0.5 size-4 shrink-0 text-amber-800 dark:text-amber-300" />
+      <div className="min-w-0">
+        <p className="font-semibold text-amber-900 dark:text-amber-200">Veraltet</p>
+        <p className="mt-0.5 text-amber-800 dark:text-amber-300">{deprecation.reason}</p>
+        {successorHref && successorTitle ? (
+          <p className="mt-1.5">
+            <Link
+              href={successorHref}
+              className="font-medium text-amber-900 underline underline-offset-2 dark:text-amber-200"
+            >
+              Empfohlener Nachfolger: {successorTitle}
+            </Link>
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
 }

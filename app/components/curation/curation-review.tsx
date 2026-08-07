@@ -5,13 +5,12 @@ import { Check, CircleAlert, CircleSlash, MessageSquare, UserCheck, X } from "lu
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { type CurationEvaluation, type EvaluatedCheck } from "@/lib/curation";
 import {
-  BADGE_LEVEL_HINTS,
-  BADGE_LEVEL_LABELS,
-  type BadgeLevel,
-  type CurationEvaluation,
-  type EvaluatedCheck,
-} from "@/lib/curation";
+  CURATION_TIER_HINTS,
+  CURATION_TIER_LABELS,
+  type CurationTier,
+} from "@/types/curation-tier";
 
 /**
  * The curator's review of a submission: run through the checklist, pick a badge
@@ -33,7 +32,7 @@ const OUTCOME_STYLES: Record<EvaluatedCheck["outcome"], { icon: typeof Check; cl
 
 export function CurationReview({ evaluation }: { evaluation: CurationEvaluation }) {
   const [manualChecked, setManualChecked] = useState<Record<string, boolean>>({});
-  const [badge, setBadge] = useState<BadgeLevel>("community");
+  const [badge, setBadge] = useState<CurationTier>("community");
   const [note, setNote] = useState("");
 
   const manualDone = evaluation.openManualChecks.every((check) => manualChecked[check.id]);
@@ -103,7 +102,7 @@ export function CurationReview({ evaluation }: { evaluation: CurationEvaluation 
       <section className="rounded-md border bg-card p-5">
         <h2 className="text-sm font-semibold text-foreground">Einstufung</h2>
         <div className="mt-3 flex flex-col gap-2">
-          {(Object.keys(BADGE_LEVEL_LABELS) as BadgeLevel[]).map((level) => (
+          {(Object.keys(CURATION_TIER_LABELS) as CurationTier[]).map((level) => (
             <label
               key={level}
               className="flex cursor-pointer items-start gap-2.5 rounded-md border p-2.5 has-[:checked]:border-primary has-[:checked]:bg-primary/5"
@@ -117,9 +116,9 @@ export function CurationReview({ evaluation }: { evaluation: CurationEvaluation 
               />
               <span className="flex flex-col">
                 <span className="text-sm font-medium text-foreground">
-                  {BADGE_LEVEL_LABELS[level]}
+                  {CURATION_TIER_LABELS[level]}
                 </span>
-                <span className="text-xs text-muted-foreground">{BADGE_LEVEL_HINTS[level]}</span>
+                <span className="text-xs text-muted-foreground">{CURATION_TIER_HINTS[level]}</span>
               </span>
             </label>
           ))}
@@ -143,7 +142,7 @@ export function CurationReview({ evaluation }: { evaluation: CurationEvaluation 
       <div className="flex flex-wrap items-center gap-3">
         <Button disabled={!canApprove}>
           <Check className="size-4" />
-          Aufnehmen als „{BADGE_LEVEL_LABELS[badge]}"
+          Aufnehmen als „{CURATION_TIER_LABELS[badge]}“
         </Button>
         <Button variant="outline">
           <CircleSlash className="size-4" />

@@ -18,8 +18,8 @@ function useCase(overrides: Partial<UseCase> = {}): UseCase {
     summary: "s",
     description: "d",
     publisher: "Teststadt",
-    maturity: "prototype",
-    installability: "direct",
+    curationTier: "experimental",
+    installPath: "portal",
     compatibility: ["2.1"],
     modelForge: { datasetId: "urn:core:platform:civitas:dataset:common:Test:1.0.0" },
     source: { repoUrl: "https://example.org/repo", gitIdentifier: "v1.0.0" },
@@ -76,6 +76,21 @@ test("falls back to legacy compatibility and requiredCapabilities", () => {
   assert.equal(result.fits, true);
   assert.equal(result.rows.length, 2);
   assert.equal(result.rows[1]?.label, "FROST");
+});
+
+test("addon and plugin blocks join the checklist as honest unknowns", () => {
+  const result = checkFit(
+    useCase({
+      requirements: { coreVersions: ["2.1"], components: ["FROST"], connectors: [] },
+      requiredCapabilities: [{ kind: "addon", name: "Grafana" }],
+    }),
+    PROFILE,
+  );
+
+  const grafana = result.rows.find((row) => row.label === "Grafana");
+  assert.equal(grafana?.status, "unknown");
+  // Not checkable is not the same as missing — the fit verdict stays positive.
+  assert.equal(result.fits, true);
 });
 
 test("missing connector is reported", () => {

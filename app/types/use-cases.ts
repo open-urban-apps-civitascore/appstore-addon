@@ -1,7 +1,30 @@
 import { z } from "zod";
 
-export const useCaseMaturitySchema = z.enum(["verified", "operational", "prototype"]);
-export const useCaseInstallabilitySchema = z.enum(["direct", "adaptation", "experimental"]);
+import {
+  curationTierSchema,
+  deprecationSchema,
+  installPathSchema,
+} from "@/types/curation-tier";
+
+// Legacy catalog vocabulary — still accepted on parse (the published index.json
+// carries it) and normalized into the single trust vocabulary (curation tier +
+// install path) by the `useCaseSchema` transform below.
+const legacyMaturitySchema = z.enum(["verified", "operational", "prototype"]);
+const legacyInstallabilitySchema = z.enum(["direct", "adaptation", "experimental"]);
+
+const LEGACY_MATURITY_TO_TIER = {
+  verified: "verified",
+  operational: "community",
+  prototype: "experimental",
+} as const;
+
+const LEGACY_INSTALLABILITY_TO_PATH = {
+  direct: "portal",
+  adaptation: "adaptation",
+  // "experimental" graded the entry, not the path — the grade lives in the
+  // curation tier now; the path stays the portal install.
+  experimental: "portal",
+} as const;
 
 export const includedArtifactSchema = z.object({
   id: z.string(),
@@ -55,6 +78,16 @@ export const requiredBuildingBlockSchema = z.union([
 // installing — who vouches for this, does it fit our instance, what do we get,
 // who may operate it — and are currently rendered from fixture data only: no
 // authoring or curation side fills them yet.
+
+/**
+ * Screenshots submitted with the listing (catalog data, delivered by the
+ * commune on submission). Empty is a first-class state: the UI then shows an
+ * honestly-labeled category illustration, never a fabricated screenshot.
+ */
+export const useCaseImageSchema = z.object({
+  url: z.string(),
+  caption: z.string().optional(),
+});
 
 /** Who vouches for this listing — the facts an approval gate asks for. */
 export const trustMetadataSchema = z.object({
@@ -115,15 +148,23 @@ export const platformRequirementsSchema = z.object({
   connectors: z.array(z.string()).default([]),
 });
 
-export const useCaseSchema = z.object({
+const useCaseObjectSchema = z.object({
   id: z.string().min(3),
   title: z.string().min(3),
   summary: z.string(),
   description: z.string(),
   publisher: z.string(),
   categories: z.array(z.string()).default([]),
-  maturity: useCaseMaturitySchema,
-  installability: useCaseInstallabilitySchema,
+  // The one graded badge (assigned by the curator) and the ungraded install
+  // path. Optional on input: entries authored before the vocabulary existed
+  // carry `maturity`/`installability` instead — the transform below fills in.
+  curationTier: curationTierSchema.optional(),
+  installPath: installPathSchema.optional(),
+  maturity: legacyMaturitySchema.optional(),
+  installability: legacyInstallabilitySchema.optional(),
+  // Deprecation overlay: visible with a warning + successor pointer (unlike
+  // `revoked`, which hides the entry entirely).
+  deprecated: deprecationSchema.optional(),
   compatibility: z.array(z.string()).min(1),
   requiredCapabilities: z.array(requiredBuildingBlockSchema).default([]),
   installQuestions: z.array(z.string()).default([]),
@@ -150,11 +191,26 @@ export const useCaseSchema = z.object({
   revokedReason: z.string().optional(),
 
   // Optional demo-relevant metadata — see the block above.
+  images: z.array(useCaseImageSchema).default([]),
   trust: trustMetadataSchema.optional(),
   provides: z.array(providedSurfaceSchema).default([]),
   roles: z.array(roleDefinitionSchema).default([]),
   requirements: platformRequirementsSchema.optional(),
 });
+
+// Normalizes the two legacy scales into the single trust vocabulary. An entry
+// with neither field defaults to the safest reading: unreviewed (experimental)
+// and portal-installable.
+export const useCaseSchema = useCaseObjectSchema.transform(
+  ({ maturity, installability, curationTier, installPath, ...rest }) => ({
+    ...rest,
+    curationTier:
+      curationTier ?? (maturity ? LEGACY_MATURITY_TO_TIER[maturity] : "experimental"),
+    installPath:
+      installPath ??
+      (installability ? LEGACY_INSTALLABILITY_TO_PATH[installability] : "portal"),
+  }),
+);
 
 export const useCaseCatalogSchema = z.object({
   version: z.string(),
@@ -249,6 +305,7 @@ export type ProvisioningStep = z.infer<typeof provisioningStepSchema>;
 export type ProvisioningTrace = z.infer<typeof provisioningTraceSchema>;
 export type ProvisionedResources = z.infer<typeof provisionedResourcesSchema>;
 export type TrustMetadata = z.infer<typeof trustMetadataSchema>;
+export type UseCaseImage = z.infer<typeof useCaseImageSchema>;
 export type ProvidedSurface = z.infer<typeof providedSurfaceSchema>;
 export type RoleDefinition = z.infer<typeof roleDefinitionSchema>;
 export type PlatformRequirements = z.infer<typeof platformRequirementsSchema>;
@@ -272,20 +329,8 @@ export const DATASET_LIFECYCLE_STATUS_LABELS: Record<DatasetLifecycleStatus, str
   AVAILABLE: "Verfügbar",
 };
 
-export const USE_CASE_MATURITY_LABELS: Record<z.infer<typeof useCaseMaturitySchema>, string> = {
-  verified: "Verifiziert",
-  operational: "In Betrieb",
-  prototype: "Prototyp",
-};
-
-export const USE_CASE_INSTALLABILITY_LABELS: Record<
-  z.infer<typeof useCaseInstallabilitySchema>,
-  string
-> = {
-  direct: "Direkt installierbar",
-  adaptation: "Anpassung nötig",
-  experimental: "Experimentell",
-};
+// Tier / install-path labels live in `types/curation-tier.ts` (the single
+// source of the trust vocabulary, shared with add-ons and the curation view).
 
 // Clean, fixed labels for the artifact type badges in the technical spec list.
 // These are platform vocabulary (they mirror the URN <type> segment), so they

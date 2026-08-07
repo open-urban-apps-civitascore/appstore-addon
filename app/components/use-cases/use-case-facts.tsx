@@ -2,25 +2,22 @@ import { type ReactNode } from "react";
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 
-import { INSTALLABILITY_TONE, StatusLabel } from "@/components/use-cases/use-case-status";
 import { type MarketplaceTexts } from "@/lib/marketplace-text";
-import { USE_CASE_INSTALLABILITY_LABELS, type UseCase } from "@/types/use-cases";
+import { INSTALL_PATH_LABELS } from "@/types/curation-tier";
+import { type UseCase } from "@/types/use-cases";
 
 /**
- * Key facts of a use case as an aligned key/value list: installability (with a
- * status dot), Core compatibility, artifact count, and the pinned source repo.
- * Chrome-less on purpose so it can sit inside the hero panel or a sidebar card.
+ * Key facts of a use case as an aligned key/value list: install path (a plain
+ * fact — the grade lives in the curation tier), Core compatibility, artifact
+ * count, and the pinned source repo. Chrome-less on purpose so it can sit
+ * inside the hero panel or a sidebar card.
  */
 export function UseCaseFacts({ useCase, text }: { useCase: UseCase; text: MarketplaceTexts }) {
   const t = text.useCases;
 
   return (
     <dl>
-      <Row label={t.installabilityLabel}>
-        <StatusLabel tone={INSTALLABILITY_TONE[useCase.installability]}>
-          {USE_CASE_INSTALLABILITY_LABELS[useCase.installability]}
-        </StatusLabel>
-      </Row>
+      <Row label={t.installPathLabel}>{INSTALL_PATH_LABELS[useCase.installPath]}</Row>
       <Row label={t.compatibilityLabel}>
         <span className="font-mono text-xs">
           {useCase.compatibility.map((version) => `Core ${version}`).join(" · ")}

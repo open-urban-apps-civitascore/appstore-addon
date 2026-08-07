@@ -11,11 +11,15 @@ import type { InstalledUseCase } from "@/types/use-cases";
 export default async function InstalledPage() {
   const text = getMarketplaceText();
 
-  // What each installed use case *provides* is declared by its catalog entry, not
-  // by the install record — look it up so the installation card can surface the
-  // API/dashboard/map links. Missing entry (unlisted since install) → no panel.
-  const catalogueSurfaces = new Map(
-    (await getUseCases().catch(() => [])).map((useCase) => [useCase.id, useCase.provides]),
+  // What each installed use case *provides* — and whether the catalog has
+  // meanwhile deprecated it — is declared by its catalog entry, not by the
+  // install record. Missing entry (unlisted since install) → no panel.
+  const catalogue = await getUseCases().catch(() => []);
+  const catalogueSurfaces = new Map(catalogue.map((useCase) => [useCase.id, useCase.provides]));
+  const catalogueDeprecations = new Map(
+    catalogue
+      .filter((useCase) => useCase.deprecated)
+      .map((useCase) => [useCase.id, useCase.deprecated]),
   );
 
   // This page reads its installs from the local install store and refreshes their
@@ -62,6 +66,7 @@ export default async function InstalledPage() {
                 key={installation.id}
                 installation={installation}
                 surfaces={catalogueSurfaces.get(installation.useCaseId) ?? []}
+                deprecation={catalogueDeprecations.get(installation.useCaseId)}
               />
             ))}
           </div>

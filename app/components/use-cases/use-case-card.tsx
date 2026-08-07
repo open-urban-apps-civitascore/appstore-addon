@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { UseCaseIllustration } from "@/components/use-cases/use-case-illustration";
-import { MaturityStatus } from "@/components/use-cases/use-case-status";
+import { DeprecatedStatus, TierStatus } from "@/components/use-cases/use-case-status";
 import { type UseCase } from "@/types/use-cases";
 
 export function UseCaseCard({ useCase }: { useCase: UseCase }) {
@@ -29,7 +29,7 @@ export function UseCaseCard({ useCase }: { useCase: UseCase }) {
           </p>
 
           <div className="mt-4 flex items-center justify-between gap-3 border-t pt-4">
-            <MaturityStatus maturity={useCase.maturity} />
+            {useCase.deprecated ? <DeprecatedStatus /> : <TierStatus tier={useCase.curationTier} />}
             <span className="truncate text-sm text-muted-foreground">{useCase.publisher}</span>
           </div>
         </div>

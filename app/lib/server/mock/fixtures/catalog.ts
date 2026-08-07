@@ -7,13 +7,15 @@ import { repoListIndexSchema, type RepoListIndex } from "@/types/repo-list";
  * through the real zod schema at module load: if the fixture ever drifts from
  * the schema, the app fails loudly, not subtly.
  *
- * The enrichment is the four optional blocks `trust`, `requirements`,
- * `provides` and `roles` — see `types/use-cases.ts`. They are NOT in the
+ * The enrichment is the optional blocks `trust`, `requirements`, `provides`,
+ * `roles` plus the trust vocabulary `curationTier` / `deprecated` — see
+ * `types/use-cases.ts` and `types/curation-tier.ts`. They are NOT in the
  * published index.json yet, because nothing authors or curates them so far.
- * Everything else here is verbatim.
+ * Everything else here is verbatim (incl. the legacy `maturity` /
+ * `installability` fields, which the schema still accepts and normalizes).
  *
  * Regenerate: copy the current index.json content into RAW_INDEX (keep `$schema`
- * out) and re-apply the four enrichment blocks.
+ * out) and re-apply the enrichment blocks.
  */
 const RAW_INDEX = {
   "version": "1.3.1",
@@ -24,6 +26,7 @@ const RAW_INDEX = {
       "name": "NodeRed",
       "description": "Flow-based programming for the Internet of Things",
       "author": "bonn-624-dev",
+      "curationTier": "community",
       "categories": [
         "Integration",
         "IoT",
@@ -55,6 +58,7 @@ const RAW_INDEX = {
         "ETL"
       ],
       "repository": "https://gitlab.com/bonn-624-dev/platform/airflow_addon",
+      "curationTier": "community",
       "licenses": {
         "addon": "European Union Public License 1.2",
         "tool": "Apache License 2.0"
@@ -119,6 +123,7 @@ const RAW_INDEX = {
         "Frontend"
       ],
       "repository": "https://gitlab.com/bonn-624-dev/platform/appsmith_addon",
+      "curationTier": "community",
       "licenses": {
         "addon": "European Union Public License 1.2",
         "tool": "Apache License 2.0"
@@ -245,6 +250,9 @@ const RAW_INDEX = {
       "name": "GeoNetwork",
       "description": "Catalog application to manage spatially referenced resources",
       "author": "bonn-624-dev",
+      "deprecated": {
+        "reason": "Wird nicht mehr gepflegt — Metadaten-Kataloge werden künftig über die Plattform selbst bereitgestellt."
+      },
       "categories": [
         "GIS",
         "Metadata",
@@ -275,6 +283,7 @@ const RAW_INDEX = {
         "Grünflächen",
         "Kataster"
       ],
+      "curationTier": "experimental",
       "maturity": "prototype",
       "installability": "direct",
       "compatibility": [
@@ -344,6 +353,7 @@ const RAW_INDEX = {
         "Mobilität",
         "Verkehr"
       ],
+      "curationTier": "verified",
       "maturity": "prototype",
       "installability": "direct",
       "compatibility": [
@@ -380,6 +390,16 @@ const RAW_INDEX = {
         "repoUrl": "https://gitlab.com/civitascore-openurbanapps/commune-mittelerde-trafficcounter",
         "gitIdentifier": "v1.1.0"
       },
+      "images": [
+        {
+          "url": "https://placehold.co/1600x900/e8f4ee/34785a.png?text=Platzhalter%0ADas+Ergebnis+im+Betrieb",
+          "caption": "Platzhalter — hier: das Dashboard im Betrieb, wie Rat und Bürger es sehen (Wochenverlauf je Zählstelle)."
+        },
+        {
+          "url": "https://placehold.co/1600x900/eef2f7/5a6b7d.png?text=Platzhalter%0AIm+CIVITAS%2FCORE-Portal",
+          "caption": "Platzhalter — hier: der Anwendungsfall im CIVITAS/CORE-Portal, als Teil der eigenen Plattform."
+        }
+      ],
       "trust": {
         "maintainer": {
           "name": "Kommune Mittelerde",
@@ -448,6 +468,7 @@ const RAW_INDEX = {
         "Umwelt",
         "Luftqualität"
       ],
+      "curationTier": "community",
       "maturity": "prototype",
       "installability": "direct",
       "compatibility": [

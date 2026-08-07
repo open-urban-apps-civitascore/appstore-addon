@@ -1,22 +1,33 @@
-import { BadgeCheck, ExternalLink, MapPin, Scale, Wrench } from "lucide-react";
+import { BadgeCheck, Check, ExternalLink, MapPin, Scale, Wrench } from "lucide-react";
 
+import { TierBadge } from "@/components/use-cases/use-case-status";
+import {
+  CURATION_TIER_CRITERIA,
+  CURATION_TIER_HINTS,
+  type CurationTier,
+} from "@/types/curation-tier";
 import type { TrustMetadata } from "@/types/use-cases";
 
 /**
- * The two facts that actually decide a listing for a municipality: who
- * maintains it, and who already runs it in production.
+ * The facts that actually decide a listing for a municipality: the curation
+ * tier (the one graded badge, with its criteria disclosed), who maintains it,
+ * and who already runs it in production.
  *
  * Written for the people who sign off (Amtsleitung, data protection, IT
  * security) rather than for the browsing user — this is the section that gets
  * forwarded as a single link.
  *
- * Rendered from optional catalog metadata. Nothing authors or curates that
- * metadata yet, so today it only appears for entries enriched by hand.
+ * The tier always renders; the remaining rows come from optional catalog
+ * metadata that nothing authors or curates yet (hand-enriched entries only).
  */
-export function TrustPanel({ trust }: { trust: TrustMetadata | undefined }) {
-  if (!trust) return null;
-
-  const hasReferences = trust.productionReferences.length > 0;
+export function TrustPanel({
+  tier,
+  trust,
+}: {
+  tier: CurationTier;
+  trust: TrustMetadata | undefined;
+}) {
+  const hasReferences = (trust?.productionReferences.length ?? 0) > 0;
 
   return (
     <section className="rounded-md border bg-card p-5">
@@ -25,7 +36,35 @@ export function TrustPanel({ trust }: { trust: TrustMetadata | undefined }) {
         <h2 className="text-sm font-semibold text-foreground">Vertrauen</h2>
       </div>
 
-      <dl className="mt-4 flex flex-col gap-4">
+      <div className="mt-4">
+        <TierBadge tier={tier} />
+        <details className="mt-2 text-xs">
+          <summary className="cursor-pointer text-muted-foreground underline-offset-2 hover:underline">
+            Was bedeutet dieses Siegel?
+          </summary>
+          <div className="mt-2 rounded-md bg-muted/50 p-3">
+            <p className="text-muted-foreground">{CURATION_TIER_HINTS[tier]}</p>
+            <ul className="mt-2 flex flex-col gap-1">
+              {CURATION_TIER_CRITERIA[tier].map((criterion) => (
+                <li key={criterion} className="flex items-start gap-1.5 text-foreground">
+                  <Check aria-hidden className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
+                  {criterion}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-muted-foreground">
+              Vergeben von der Kuratierung der Community — und bei Verstößen entziehbar.
+            </p>
+          </div>
+        </details>
+      </div>
+
+      {!trust ? (
+        <p className="mt-4 border-t pt-4 text-xs text-muted-foreground">
+          Für diesen Eintrag liegen noch keine weiteren Vertrauensangaben vor.
+        </p>
+      ) : (
+      <dl className="mt-4 flex flex-col gap-4 border-t pt-4">
         {trust.maintainer ? (
           <div className="flex items-start gap-2.5">
             <Wrench className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -116,6 +155,7 @@ export function TrustPanel({ trust }: { trust: TrustMetadata | undefined }) {
           </div>
         ) : null}
       </dl>
+      )}
     </section>
   );
 }

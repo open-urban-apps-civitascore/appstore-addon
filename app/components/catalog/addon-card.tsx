@@ -2,7 +2,8 @@ import Link from "next/link";
 
 import { AddonIcon } from "@/components/catalog/addon-icon";
 import { Badge } from "@/components/ui/badge";
-import type { Addon } from "@/types/addons";
+import { DeprecatedStatus, TierStatus } from "@/components/use-cases/use-case-status";
+import { addonCurationTier, type Addon } from "@/types/addons";
 
 interface AddonCardProps {
   addon: Addon;
@@ -33,15 +34,27 @@ export const AddonCard = ({ addon, href = "/marketplace/addons" }: AddonCardProp
           </div>
         </div>
 
-        {addon.categories.length > 0 ? (
-          <div className="mt-auto flex flex-wrap gap-1.5">
-            {addon.categories.map((category) => (
-              <Badge key={category} variant="secondary" className="font-normal">
-                {category}
-              </Badge>
-            ))}
+        <div className="mt-auto flex flex-col gap-3">
+          {addon.categories.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {addon.categories.map((category) => (
+                <Badge key={category} variant="secondary" className="font-normal">
+                  {category}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
+
+          {/* Same trust language as the use-case cards — one badge system across
+              all catalog types. */}
+          <div className="flex items-center justify-between gap-3 border-t pt-3">
+            {addon.deprecated ? (
+              <DeprecatedStatus />
+            ) : (
+              <TierStatus tier={addonCurationTier(addon)} />
+            )}
           </div>
-        ) : null}
+        </div>
       </article>
     </Link>
   );

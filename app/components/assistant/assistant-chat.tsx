@@ -4,10 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, MessageSquare, Send, Sparkles } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TierBadge } from "@/components/use-cases/use-case-status";
 import { matchUseCases, type AssistantMatch } from "@/lib/assistant-match";
-import { USE_CASE_MATURITY_LABELS, type UseCase } from "@/types/use-cases";
+import { type UseCase } from "@/types/use-cases";
 
 /**
  * Describe the problem in plain words instead of having to know the catalog's
@@ -87,9 +87,7 @@ export function AssistantChat({ useCases }: { useCases: UseCase[] }) {
                             <span className="text-sm font-semibold text-foreground">
                               {match.useCase.title}
                             </span>
-                            <Badge variant="outline" className="text-[11px]">
-                              {USE_CASE_MATURITY_LABELS[match.useCase.maturity]}
-                            </Badge>
+                            <TierBadge tier={match.useCase.curationTier} />
                             <span className="ml-auto inline-flex items-center gap-1 text-xs text-primary">
                               Ansehen <ArrowRight className="size-3" />
                             </span>
