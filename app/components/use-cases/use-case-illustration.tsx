@@ -70,10 +70,16 @@ function IllustrationBody({ kind }: { kind: IllustrationKind }) {
   }
 }
 
-export function UseCaseIllustration({ categories }: { categories: string[] }) {
+export function UseCaseIllustration({
+  categories,
+  className = "h-32",
+}: {
+  categories: string[];
+  className?: string;
+}) {
   const kind = illustrationForCategory(categories);
   return (
-    <div className="h-32 w-full bg-emerald-500/10">
+    <div className={`w-full bg-emerald-500/10 ${className}`}>
       <svg
         viewBox="0 0 400 150"
         preserveAspectRatio="xMidYMid slice"
