@@ -45,9 +45,8 @@ const getNavSections = (installedCount: number, useCaseCount: number): NavSectio
           active: true,
           hasChildren: true,
           children: [
-            { title: text.nav.addons, href: "/marketplace/addons" },
-            { title: text.nav.plugins, href: "/marketplace/plugins" },
             { title: `${text.nav.useCases} (${useCaseCount})`, href: "/marketplace/use-cases" },
+            { title: text.nav.addons, href: "/marketplace/addons" },
           ],
         },
         { title: text.nav.installed, href: "/installed", icon: PackageCheck, count: installedCount },

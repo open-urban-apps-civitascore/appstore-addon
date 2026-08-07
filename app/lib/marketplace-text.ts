@@ -9,7 +9,6 @@ export interface MarketplaceTexts {
     nav: {
       marketplace: string;
       addons: string;
-      plugins: string;
       useCases: string;
       installed: string;
       data: string;
@@ -19,7 +18,6 @@ export interface MarketplaceTexts {
       tenantManagement: string;
       docs: string;
       breadcrumbCatalog: string;
-      breadcrumbPlugins: string;
       breadcrumbUseCases: string;
     };
   };
@@ -31,10 +29,22 @@ export interface MarketplaceTexts {
     addonCountUnit: string;
     backToCatalog: string;
   };
+  landing: {
+    heading: string;
+    subtitle: string;
+    searchPlaceholder: string;
+    searchButton: string;
+    useCasesHeading: string;
+    allUseCases: string;
+    addonsTitle: string;
+    addonsHint: string;
+  };
   useCases: {
     heading: string;
     subtitle: string;
     noResults: string;
+    countLabel: string;
+    searchPlaceholder: string;
     installQuestions: string;
     includedArtifacts: string;
     datasetReference: string;
@@ -43,19 +53,20 @@ export interface MarketplaceTexts {
     installedHeading: string;
     installedSubtitle: string;
     detailsHeading: string;
-    installabilityLabel: string;
+    installPathLabel: string;
     compatibilityLabel: string;
     artifactsLabel: string;
     sourceLabel: string;
     installHeading: string;
     installDescription: string;
-    requiredHeading: string;
     aboutHeading: string;
     publisherLabel: string;
+    technicalHeading: string;
   };
   detail: {
     createInstallPr: string;
     openRepository: string;
+    installPathLabel: string;
     addonLicense: string;
     toolLicense: string;
     deploymentLabel: string;
@@ -84,7 +95,6 @@ export interface MarketplaceTexts {
   };
   placeholders: {
     addonsCount: string;
-    pluginsCount: string;
     useCasesCount: string;
   };
   common: {
@@ -106,7 +116,6 @@ const MARKETPLACE_TEXT_DE: Omit<MarketplaceTexts, "locale"> = {
     nav: {
       marketplace: "Marktplatz",
       addons: "Add-ons",
-      plugins: "Plugins",
       useCases: "Anwendungsfälle",
       installed: "Installiert",
       data: "Unsere Daten",
@@ -116,7 +125,6 @@ const MARKETPLACE_TEXT_DE: Omit<MarketplaceTexts, "locale"> = {
       tenantManagement: "Mandantenverwaltung",
       docs: "Dokumentation",
       breadcrumbCatalog: "Katalog",
-      breadcrumbPlugins: "Plugins",
       breadcrumbUseCases: "Anwendungsfälle",
     },
   },
@@ -129,11 +137,25 @@ const MARKETPLACE_TEXT_DE: Omit<MarketplaceTexts, "locale"> = {
     addonCountUnit: "Add-ons",
     backToCatalog: "Zurück zum Katalog",
   },
+  landing: {
+    heading: "Erprobte Lösungen anderer Kommunen",
+    subtitle:
+      "Finden, ausprobieren, produktiv nehmen — Anwendungsfälle, die in anderen Kommunen bereits laufen, installiert über die Plattform selbst.",
+    searchPlaceholder: "Was möchten Sie lösen? z. B. Verkehr rund um den Bahnhof …",
+    searchButton: "Suchen",
+    useCasesHeading: "Anwendungsfälle",
+    allUseCases: "Alle Anwendungsfälle",
+    addonsTitle: "Add-ons",
+    addonsHint:
+      "Eigenständige Werkzeuge und Anwendungen — die Installation übernimmt der Betreiber der Instanz.",
+  },
   useCases: {
     heading: "Anwendungsfälle",
     subtitle:
       "Wiederverwendbare Use Cases. Die Installation stellt den Anwendungsfall über das CivitasCore Portal-Backend bereit: Der DataSet-Lebenszyklus löst die Provisionierung (FROST-Projekt, APISIX-Route, NiFi-Pipeline) aus.",
-    noResults: "Noch keine Anwendungsfälle im Katalog.",
+    noResults: "Keine Anwendungsfälle für die aktuelle Suche gefunden.",
+    countLabel: "von",
+    searchPlaceholder: "Anwendungsfall suchen …",
     installQuestions: "Installationsfragen",
     includedArtifacts: "Enthaltene Artefakte",
     datasetReference: "Referenzierter CORE-Datensatz",
@@ -143,20 +165,21 @@ const MARKETPLACE_TEXT_DE: Omit<MarketplaceTexts, "locale"> = {
     installedSubtitle:
       "Diese Liste zeigt die über das Portal-Backend bereitgestellten Anwendungsfälle inklusive Provisionierungsprotokoll und aktuellem Lebenszyklus-Status.",
     detailsHeading: "Details",
-    installabilityLabel: "Installierbarkeit",
+    installPathLabel: "Installationsweg",
     compatibilityLabel: "Kompatibilität",
     artifactsLabel: "Artefakte",
     sourceLabel: "Quelle",
     installHeading: "Installieren",
     installDescription:
       "Stellt den Anwendungsfall über das CivitasCore Portal-Backend bereit. Der DataSet-Lebenszyklus (stage → release) löst die Provisionierung der Infrastruktur aus.",
-    requiredHeading: "Benötigt",
-    aboutHeading: "Worum es geht",
+    aboutHeading: "Was dieser Anwendungsfall löst",
     publisherLabel: "Herausgeber",
+    technicalHeading: "Technische Details",
   },
   detail: {
     createInstallPr: "Create Install PR for my cluster",
     openRepository: "Open repository",
+    installPathLabel: "Installationsweg",
     addonLicense: "Add-on Lizenz",
     toolLicense: "Tool Lizenz",
     deploymentLabel: "Deployment",
@@ -186,7 +209,6 @@ const MARKETPLACE_TEXT_DE: Omit<MarketplaceTexts, "locale"> = {
   },
   placeholders: {
     addonsCount: "Noch keine Add-ons verfügbar.",
-    pluginsCount: "Noch keine Plugins verfügbar.",
     useCasesCount: "Noch keine Anwendungsfälle verfügbar.",
   },
   common: {

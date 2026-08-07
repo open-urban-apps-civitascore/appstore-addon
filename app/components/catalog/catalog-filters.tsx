@@ -8,14 +8,13 @@ import { cn } from "@/lib/utils";
 export interface CatalogFilterState {
   search: string;
   category: string;
-  coreVersion: string;
 }
 
 interface CatalogFiltersProps {
   value: CatalogFilterState;
   onChange: (next: CatalogFilterState) => void;
   categories: string[];
-  coreVersions: string[];
+  searchPlaceholder?: string;
 }
 
 // How many category pills to show before collapsing behind a "+N weitere" toggle.
@@ -64,7 +63,7 @@ export const CatalogFilters = ({
   value,
   onChange,
   categories,
-  coreVersions,
+  searchPlaceholder = "Add-on suchen …",
 }: CatalogFiltersProps) => {
   const [showAllCategories, setShowAllCategories] = useState(false);
 
@@ -87,10 +86,6 @@ export const CatalogFilters = ({
     { value: "", label: "Alle" },
     ...visibleCategories.map((category) => ({ value: category, label: category })),
   ];
-  const versionOptions = [
-    { value: "", label: "Alle" },
-    ...coreVersions.map((version) => ({ value: version, label: `Core ${version}` })),
-  ];
 
   return (
     <div className="flex flex-col gap-5">
@@ -100,7 +95,7 @@ export const CatalogFilters = ({
           type="search"
           value={value.search}
           onChange={(event) => set("search", event.target.value)}
-          placeholder="Add-on suchen …"
+          placeholder={searchPlaceholder}
           className="h-10 w-full rounded-lg border bg-card pl-9 pr-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
         />
       </label>
@@ -140,19 +135,6 @@ export const CatalogFilters = ({
         </div>
       ) : null}
 
-      {coreVersions.length > 1 ? (
-        <div>
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Core-Version
-          </p>
-          <FilterPills
-            ariaLabel="Core-Version"
-            options={versionOptions}
-            value={value.coreVersion}
-            onChange={(next) => set("coreVersion", next)}
-          />
-        </div>
-      ) : null}
     </div>
   );
 };

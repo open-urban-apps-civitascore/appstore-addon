@@ -10,7 +10,6 @@ import { AddonCard } from "./addon-card";
 const INITIAL_FILTERS: CatalogFilterState = {
   search: "",
   category: "",
-  coreVersion: "",
 };
 
 interface AddonCatalogProps {
@@ -40,14 +39,6 @@ export const AddonCatalog = ({
     [addons],
   );
 
-  const coreVersions = useMemo(
-    () =>
-      Array.from(
-        new Set(addons.flatMap((addon) => addon.compatibility.map((entry) => entry.coreVersion))),
-      ).sort(),
-    [addons],
-  );
-
   const filtered = useMemo(() => {
     const query = filters.search.trim().toLowerCase();
 
@@ -59,13 +50,6 @@ export const AddonCatalog = ({
       }
 
       if (filters.category && !addon.categories.includes(filters.category)) {
-        return false;
-      }
-
-      if (
-        filters.coreVersion &&
-        !addon.compatibility.some((entry) => entry.coreVersion === filters.coreVersion)
-      ) {
         return false;
       }
 
@@ -81,12 +65,7 @@ export const AddonCatalog = ({
         {freshness ? <div className="mt-2">{freshness}</div> : null}
       </div>
 
-      <CatalogFilters
-        value={filters}
-        onChange={setFilters}
-        categories={categories}
-        coreVersions={coreVersions}
-      />
+      <CatalogFilters value={filters} onChange={setFilters} categories={categories} />
 
       <p className="text-sm text-muted-foreground">
         <span className="font-semibold text-foreground">{filtered.length}</span>{" "}
