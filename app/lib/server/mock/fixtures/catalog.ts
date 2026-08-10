@@ -307,7 +307,13 @@ const RAW_INDEX = {
           "id": "urn:core:platform:civitas:datastructure:demo:TreeRecord:1.0.0",
           "title": "TreeRecord",
           "kind": "datastructure",
-          "description": "Minimale JSON-Schema-Datenstruktur für einen Baumdatensatz."
+          "description": "Minimale JSON-Schema-Datenstruktur für einen Baumdatensatz.",
+          "requires": [
+            {
+              "label": "Vorhandener Baumbestand als Liste",
+              "note": "Export aus dem Fachverfahren oder eine gepflegte Tabelle mit Standort und Art."
+            }
+          ]
         }
       ],
       "modelForge": {
@@ -377,7 +383,17 @@ const RAW_INDEX = {
           "id": "urn:core:platform:civitas:datastructure:mobility:TrafficCounterReading:1.0.0",
           "title": "TrafficCounterReading",
           "kind": "datastructure",
-          "description": "Eine Zählstellen-Messung: Fahrzeuganzahl, Geschwindigkeit, Richtung, Standort."
+          "description": "Eine Zählstellen-Messung: Fahrzeuganzahl, Geschwindigkeit, Richtung, Standort.",
+          "requires": [
+            {
+              "label": "Dialog-Displays mit Datenausgang",
+              "note": "Smiley-Tafeln, die Zählwerte per MQTT melden können — z. B. Modelle mit Mobilfunkmodul."
+            },
+            {
+              "label": "Standortliste der Zählstellen",
+              "note": "Koordinaten je Messpunkt, einmalig aus dem Tiefbauamt."
+            }
+          ]
         },
         {
           "id": "urn:core:platform:civitas:datastructure:common:GeoPoint:1.0.0",
@@ -390,20 +406,40 @@ const RAW_INDEX = {
         "repoUrl": "https://gitlab.com/civitascore-openurbanapps/commune-mittelerde-trafficcounter",
         "gitIdentifier": "v1.1.0"
       },
+      "demoData": {
+        "contains": "eine Woche Zähldaten von drei Standorten",
+        "note": "Die Beispieldaten laufen über eine vorkonfigurierte Quelle — Ihre eigenen Displays binden Sie später an, ohne neu zu installieren."
+      },
       "images": [
         {
           "url": "https://placehold.co/1600x900/e8f4ee/34785a.png?text=Platzhalter%0ADas+Ergebnis+im+Betrieb",
-          "caption": "Platzhalter — hier: das Dashboard im Betrieb, wie Rat und Bürger es sehen (Wochenverlauf je Zählstelle)."
+          "caption": "Das Dashboard im Betrieb",
+          "highlights": [
+            "Wochenverlauf der Fahrzeugzahlen je Zählstelle",
+            "Tagesspitzen morgens und nachmittags klar erkennbar",
+            "Durchschnittsgeschwindigkeit je Messpunkt als zweite Kurve",
+            "Diese Ansicht zeigt die Kommune dem Rat"
+          ]
         },
         {
           "url": "https://placehold.co/1600x900/eef2f7/5a6b7d.png?text=Platzhalter%0AIm+CIVITAS%2FCORE-Portal",
-          "caption": "Platzhalter — hier: der Anwendungsfall im CIVITAS/CORE-Portal, als Teil der eigenen Plattform."
+          "caption": "Der Anwendungsfall im Portal",
+          "highlights": [
+            "Läuft als Teil der eigenen CIVITAS/CORE-Instanz",
+            "Datensatz, Datenstrukturen und Pipeline an einer Stelle",
+            "Kein zusätzliches System, keine zweite Anmeldung"
+          ]
         }
       ],
       "trust": {
         "maintainer": {
           "name": "Kommune Mittelerde",
           "contactUrl": "https://gitlab.com/civitascore-openurbanapps/commune-mittelerde-trafficcounter"
+        },
+        "contactPerson": {
+          "name": "Samweis Gamdschie",
+          "role": "Amt für Digitalisierung",
+          "email": "s.gamdschie@mittelerde.example"
         },
         "productionReferences": [
           { "municipality": "Kommune Mittelerde", "since": "2026" },
@@ -489,7 +525,13 @@ const RAW_INDEX = {
           "id": "urn:core:platform:civitas:datastructure:environment:AirQualityReading:1.0.0",
           "title": "AirQualityReading",
           "kind": "datastructure",
-          "description": "Eine Feinstaub-Messung: PM2.5/PM10, Zeitpunkt, Standort."
+          "description": "Eine Feinstaub-Messung: PM2.5/PM10, Zeitpunkt, Standort.",
+          "requires": [
+            {
+              "label": "Feinstaubsensoren mit MQTT-Anbindung",
+              "note": "Z. B. Sensor.Community-Bausätze oder kalibrierte Messstationen."
+            }
+          ]
         },
         {
           "id": "urn:core:platform:civitas:datastructure:common:GeoPoint:1.0.0",

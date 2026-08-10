@@ -319,6 +319,24 @@
                 },
                 "description": {
                   "type": "string"
+                },
+                "requires": {
+                  "default": [],
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string"
+                      },
+                      "note": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "label"
+                    ]
+                  }
                 }
               },
               "required": [
@@ -376,11 +394,29 @@
                 },
                 "caption": {
                   "type": "string"
+                },
+                "highlights": {
+                  "default": [],
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 }
               },
               "required": [
                 "url"
               ]
+            }
+          },
+          "demoData": {
+            "type": "object",
+            "properties": {
+              "contains": {
+                "type": "string"
+              },
+              "note": {
+                "type": "string"
+              }
             }
           },
           "trust": {
@@ -395,6 +431,26 @@
                   "contactUrl": {
                     "type": "string",
                     "format": "uri"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              },
+              "contactPerson": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
                   }
                 },
                 "required": [

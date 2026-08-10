@@ -31,6 +31,20 @@ export const includedArtifactSchema = z.object({
   title: z.string(),
   kind: z.enum(["dataset", "datastructure", "datasource", "pipeline"]),
   description: z.string().optional(),
+  /**
+   * What this artifact needs from the real world to work with productive data
+   * — sensors, hardware, external services, existing registers. NOT part of the
+   * bundle: the install creates the artifact, but it stays empty until these
+   * exist. Shown per artifact in the technical zone.
+   */
+  requires: z
+    .array(
+      z.object({
+        label: z.string(),
+        note: z.string().optional(),
+      }),
+    )
+    .default([]),
 });
 
 // A reference to a CORE dataset (its URN), carried by a catalog use case — the
@@ -86,7 +100,25 @@ export const requiredBuildingBlockSchema = z.union([
  */
 export const useCaseImageSchema = z.object({
   url: z.string(),
+  /** Short title of this screenshot, e.g. "Wochenverlauf je Zählstelle". */
   caption: z.string().optional(),
+  /**
+   * What is visible in THIS screenshot, as short points — filled in per image
+   * by the publishing commune when submitting (Ewa, 2026-08-10). Unique per
+   * image: the reader gets the picture explained, not a generic blurb.
+   */
+  highlights: z.array(z.string()).default([]),
+});
+
+/**
+ * Bundled sample data: the use case runs and shows something before any own
+ * sensor exists. Optional — only listings that really ship demo data may
+ * advertise it (nothing in the published catalog does yet, C7).
+ */
+export const demoDataSchema = z.object({
+  /** What the sample data contains, e.g. "eine Woche Zähldaten von 3 Standorten". */
+  contains: z.string().optional(),
+  note: z.string().optional(),
 });
 
 /** Who vouches for this listing — the facts an approval gate asks for. */
@@ -95,6 +127,18 @@ export const trustMetadataSchema = z.object({
     .object({
       name: z.string(),
       contactUrl: z.string().url().optional(),
+    })
+    .optional(),
+  /**
+   * A named person another commune can actually call. Optional by design:
+   * naming a person is personal data, so it stays the publisher's choice.
+   */
+  contactPerson: z
+    .object({
+      name: z.string(),
+      role: z.string().optional(),
+      email: z.string().optional(),
+      phone: z.string().optional(),
     })
     .optional(),
   /** Communes running this in production. Clickable when the reference is public. */
@@ -192,6 +236,7 @@ const useCaseObjectSchema = z.object({
 
   // Optional demo-relevant metadata — see the block above.
   images: z.array(useCaseImageSchema).default([]),
+  demoData: demoDataSchema.optional(),
   trust: trustMetadataSchema.optional(),
   provides: z.array(providedSurfaceSchema).default([]),
   roles: z.array(roleDefinitionSchema).default([]),
@@ -306,6 +351,7 @@ export type ProvisioningTrace = z.infer<typeof provisioningTraceSchema>;
 export type ProvisionedResources = z.infer<typeof provisionedResourcesSchema>;
 export type TrustMetadata = z.infer<typeof trustMetadataSchema>;
 export type UseCaseImage = z.infer<typeof useCaseImageSchema>;
+export type DemoData = z.infer<typeof demoDataSchema>;
 export type ProvidedSurface = z.infer<typeof providedSurfaceSchema>;
 export type RoleDefinition = z.infer<typeof roleDefinitionSchema>;
 export type PlatformRequirements = z.infer<typeof platformRequirementsSchema>;
