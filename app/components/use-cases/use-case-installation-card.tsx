@@ -40,7 +40,7 @@ export function UseCaseInstallationCard({
   return (
     <article className="flex flex-col gap-4 rounded-md border bg-card p-5">
       {deprecation ? <DeprecatedNotice deprecation={deprecation} /> : null}
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
         <div>
           <h2 className="text-lg font-semibold text-foreground">{installation.useCaseTitle}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{installation.createdDataset.description}</p>
@@ -48,7 +48,7 @@ export function UseCaseInstallationCard({
             {INSTALLED_USE_CASE_SOURCE_LABELS[installation.source]}
           </p>
         </div>
-        <div className="flex flex-col items-end gap-3">
+        <div className="flex w-full flex-row flex-wrap items-center gap-3 sm:w-auto sm:flex-col sm:items-end">
           <Badge>{DATASET_LIFECYCLE_STATUS_LABELS[installation.status]}</Badge>
           <ActivateInstalledUseCaseButton
             useCaseId={installation.useCaseId}

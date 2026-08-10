@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 
 import { auth, signIn } from "@/auth";
 import { AppHeader } from "@/components/layout/app-header";
+import { AppShell } from "@/components/layout/app-shell";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { getMarketplaceText } from "@/lib/marketplace-text";
 import { isMockMode } from "@/lib/server/mock/mode";
@@ -42,14 +43,15 @@ export async function MarketplacePageShell({
   }
 
   return (
-    <div className="flex">
-      <AppSidebar
-        tenantName={tenantName || session?.user?.name || session?.user?.email || undefined}
-      />
-      <main className="flex h-svh flex-1 flex-col overflow-hidden">
-        <AppHeader breadcrumb={breadcrumb} />
-        <div className="flex-1 overflow-y-auto bg-muted/40 p-6">{children}</div>
-      </main>
-    </div>
+    <AppShell
+      sidebar={
+        <AppSidebar
+          tenantName={tenantName || session?.user?.name || session?.user?.email || undefined}
+        />
+      }
+    >
+      <AppHeader breadcrumb={breadcrumb} />
+      <div className="flex-1 overflow-y-auto bg-muted/40 p-4 lg:p-6">{children}</div>
+    </AppShell>
   );
 }
