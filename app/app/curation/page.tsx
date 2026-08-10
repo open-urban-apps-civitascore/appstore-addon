@@ -3,16 +3,24 @@ import { ArrowRight, CircleAlert, Check, Inbox } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { MarketplacePageShell } from "@/components/marketplace/page-shell";
+import { CurationOnly } from "@/components/curation/curation-only";
 import { evaluateSubmission, listSubmissions } from "@/lib/curation";
+import { getMockRole } from "@/lib/mock-role";
 
 /**
  * The curator's queue: submissions waiting to be reviewed before they appear in
- * the catalog.
+ * the catalog. Curation belongs to Civitas Connect e. V. — a commune view has
+ * no business here, so the route checks the role, not just the navigation.
  *
  * PLACEHOLDER SOURCE: submissions are constants and have to come from the
  * catalog repository's open merge requests instead.
  */
 export default async function CurationPage() {
+  const role = await getMockRole();
+  if (role !== "curator") {
+    return <CurationOnly />;
+  }
+
   const submissions = listSubmissions().map((submission) => ({
     submission,
     evaluation: evaluateSubmission(submission),

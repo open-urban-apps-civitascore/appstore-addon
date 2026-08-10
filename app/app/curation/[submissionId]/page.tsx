@@ -2,9 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 
+import { CurationOnly } from "@/components/curation/curation-only";
 import { CurationReview } from "@/components/curation/curation-review";
 import { MarketplacePageShell } from "@/components/marketplace/page-shell";
 import { evaluateSubmission, getSubmission } from "@/lib/curation";
+import { getMockRole } from "@/lib/mock-role";
 
 function formatTimestamp(value: string): string {
   const date = new Date(value);
@@ -17,6 +19,11 @@ export default async function CurationReviewPage({
 }: {
   params: Promise<{ submissionId: string }>;
 }) {
+  const role = await getMockRole();
+  if (role !== "curator") {
+    return <CurationOnly />;
+  }
+
   const { submissionId } = await params;
   const submission = getSubmission(submissionId);
 
