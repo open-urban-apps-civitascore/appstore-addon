@@ -2,7 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, FlaskConical, LoaderCircle, Sparkles, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  FlaskConical,
+  LoaderCircle,
+  PlayCircle,
+  Sparkles,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -14,47 +22,42 @@ import type { UseCase } from "@/types/use-cases";
 
 /**
  * The pre-install wizard as a modal — one decision per view, a visible step
- * indicator, defaults so the fast path is "weiter, weiter, bereitstellen"
+ * indicator, defaults so the fast path is "weiter, weiter, installieren"
  * (design session 2026-08-07; wizard guidance from the UX research note):
  *
- *   Datenquelle → Freigabe → Angaben (Fragen + Rollen) → Prüfen (dry run)
+ *   Datenquelle → Freigabe → Prüfen (dry run)
  *
- * Steps that do not apply are skipped: "Freigabe" disappears for "Später
- * konfigurieren" (the install stops at a DRAFT shell), "Angaben" disappears
- * when the bundle ships neither questions nor roles. An "Experimentell" entry
- * shows one acknowledge view before the wizard (friction ∝ trust, D11).
+ * "Freigabe" disappears for "Später konfigurieren" (the install stops at a
+ * DRAFT shell). An "Experimentell" entry shows one acknowledge view before the
+ * wizard (friction ∝ trust, D11). Install questions and role assignment were
+ * dropped from the flow (Ewa, 2026-08-07) — the catalog fields still parse,
+ * the wizard just no longer asks.
  *
  * Entered values survive closing the modal — reopening resumes where the user
  * left off. Broker credentials are sent only to the backend — never persisted
  * in the install record or shown again (D3).
- *
- * PLACEHOLDER SOURCE: the group list in the roles step is a constant and has
- * to be read from the tenant's groups on the portal-backend instead. The
- * chosen bindings are recorded on the install record but not yet applied.
  */
 
 type DataSourceMode = "demo" | "own" | "later";
 type GoLive = "release" | "stage";
 
-/** Placeholder tenant groups for the role-assignment step. */
-const MOCK_GROUPS = [
-  "Amt für Digitalisierung",
-  "Tiefbauamt",
-  "Umweltamt",
-  "Stadtwerke IT",
-  "Externe Dienstleister",
-];
-
-const DATA_SOURCE_CHOICES: { value: DataSourceMode; label: string; hint: string }[] = [
+const DATA_SOURCE_CHOICES: {
+  value: DataSourceMode;
+  label: string;
+  hint: string;
+  /** The recommended path: try the use case before touching own infrastructure. */
+  featured?: boolean;
+}[] = [
   {
     value: "demo",
-    label: "Demo-Datenquelle",
-    hint: "Vorkonfigurierte MQTT-Quelle — ideal zum Ausprobieren, keine Eingaben nötig.",
+    label: "Mit Demo-Daten starten",
+    hint: "Der Anwendungsfall läuft sofort mit mitgelieferten Beispieldaten — ohne eigene Sensoren, ohne Konfiguration. Ideal, um zu sehen, ob er zu Ihrer Kommune passt.",
+    featured: true,
   },
   {
     value: "own",
-    label: "Eigener MQTT-Broker",
-    hint: "Verbindet den Anwendungsfall mit Ihrer eigenen Infrastruktur.",
+    label: "Eigene Datenquelle anbinden",
+    hint: "Verbindet den Anwendungsfall direkt mit Ihrem MQTT-Broker.",
   },
   {
     value: "later",
@@ -76,20 +79,17 @@ const GO_LIVE_CHOICES: { value: GoLive; label: string; hint: string }[] = [
   },
 ];
 
-type StepId = "source" | "golive" | "answers" | "review";
+type StepId = "source" | "golive" | "review";
 
 const STEP_LABELS: Record<StepId, string> = {
   source: "Datenquelle",
   golive: "Freigabe",
-  answers: "Rollen",
   review: "Prüfen",
 };
 
 const STEP_HINTS: Record<StepId, string> = {
-  source: "Woher kommen die Daten? Für den ersten Eindruck reicht die Demo-Datenquelle.",
+  source: "Woher kommen die Daten? Zum Ausprobieren brauchen Sie noch keine eigenen.",
   golive: "Wann soll der Anwendungsfall live gehen?",
-  answers:
-    "Der Anwendungsfall bringt Rollendefinitionen mit. Wem sie zustehen, entscheidet Ihre Kommune — ordnen Sie jeder Rolle eine Gruppe zu.",
   review: "Alles auf einen Blick — erst nach Ihrer Bestätigung wird etwas angelegt.",
 };
 
@@ -107,18 +107,12 @@ export function InstallUseCaseButton({ useCase }: { useCase: UseCase }) {
   const [mode, setMode] = useState<DataSourceMode>("demo");
   const [goLive, setGoLive] = useState<GoLive>("release");
   const [broker, setBroker] = useState({ url: "", topic: "", username: "", password: "" });
-  const [roleAssignments, setRoleAssignments] = useState<Record<string, string>>({});
-
-  // Install questions were dropped from the wizard (Ewa, 2026-08-07) — the
-  // catalog field still parses, the app just no longer asks.
-  const hasAnswersStep = useCase.roles.length > 0;
 
   // "Später konfigurieren" stops at DRAFT — the Freigabe axis only applies
   // once a data source exists, so its step disappears from the wizard.
   const steps: StepId[] = [
     "source",
     ...(mode !== "later" ? (["golive"] as StepId[]) : []),
-    ...(hasAnswersStep ? (["answers"] as StepId[]) : []),
     "review",
   ];
   const step = steps[Math.min(stepIndex, steps.length - 1)];
@@ -143,7 +137,7 @@ export function InstallUseCaseButton({ useCase }: { useCase: UseCase }) {
           : { mode },
       goLive: mode === "later" ? "release" : goLive,
       answers: {},
-      roleAssignments,
+      roleAssignments: {},
     };
   }
 
@@ -185,7 +179,7 @@ export function InstallUseCaseButton({ useCase }: { useCase: UseCase }) {
     <>
       <Button onClick={() => setOpen(true)}>
         <Sparkles className="size-4" />
-        Im Portal-Backend bereitstellen
+        Installieren
       </Button>
 
       <Modal open={open} onClose={close} labelledBy="install-wizard-title">
@@ -278,7 +272,12 @@ export function InstallUseCaseButton({ useCase }: { useCase: UseCase }) {
                   {DATA_SOURCE_CHOICES.map((choice) => (
                     <label
                       key={choice.value}
-                      className="flex cursor-pointer items-start gap-2.5 rounded-md border p-2.5 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5"
+                      className={cn(
+                        "flex cursor-pointer items-start gap-2.5 rounded-md border p-2.5 text-sm",
+                        choice.featured
+                          ? "border-emerald-300 bg-emerald-50/60 p-3 has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:has-[:checked]:border-emerald-600"
+                          : "has-[:checked]:border-primary has-[:checked]:bg-primary/5",
+                      )}
                     >
                       <input
                         type="radio"
@@ -286,11 +285,28 @@ export function InstallUseCaseButton({ useCase }: { useCase: UseCase }) {
                         value={choice.value}
                         checked={mode === choice.value}
                         onChange={() => setMode(choice.value)}
-                        className="mt-0.5 accent-primary"
+                        className={cn("mt-0.5", choice.featured ? "accent-emerald-600" : "accent-primary")}
                       />
-                      <span className="flex flex-col">
-                        <span className="font-medium text-foreground">{choice.label}</span>
-                        <span className="text-xs text-muted-foreground">{choice.hint}</span>
+                      <span className="flex flex-col gap-0.5">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-foreground">{choice.label}</span>
+                          {choice.featured ? (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-1.5 py-0.5 text-[11px] font-medium text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300">
+                              <PlayCircle aria-hidden className="size-3" />
+                              Empfohlen zum Ausprobieren
+                            </span>
+                          ) : null}
+                        </span>
+                        <span
+                          className={cn(
+                            "text-xs",
+                            choice.featured
+                              ? "leading-relaxed text-emerald-900/80 dark:text-emerald-200/80"
+                              : "text-muted-foreground",
+                          )}
+                        >
+                          {choice.hint}
+                        </span>
                       </span>
                     </label>
                   ))}
@@ -374,51 +390,6 @@ export function InstallUseCaseButton({ useCase }: { useCase: UseCase }) {
                 </fieldset>
               ) : null}
 
-              {step === "answers" ? (
-                <div className="flex flex-col gap-4">
-                  {useCase.roles.length > 0 ? (
-                    <fieldset className="flex flex-col gap-2">
-                      <legend className="sr-only">Rollen zuweisen</legend>
-                      {useCase.roles.map((role) => (
-                        <label
-                          key={role.key}
-                          className="flex flex-col gap-1 rounded-md border p-2.5 text-sm"
-                        >
-                          <span className="font-medium text-foreground">{role.label}</span>
-                          {role.description ? (
-                            <span className="text-xs text-muted-foreground">
-                              {role.description}
-                            </span>
-                          ) : null}
-                          {role.permissions.length > 0 ? (
-                            <span className="font-mono text-[11px] text-muted-foreground">
-                              {role.permissions.join(" · ")}
-                            </span>
-                          ) : null}
-                          <select
-                            value={roleAssignments[role.key] ?? ""}
-                            onChange={(event) =>
-                              setRoleAssignments({
-                                ...roleAssignments,
-                                [role.key]: event.target.value,
-                              })
-                            }
-                            className="mt-1 rounded-md border bg-background px-2.5 py-1.5 text-sm text-foreground"
-                          >
-                            <option value="">— noch nicht zugewiesen —</option>
-                            {MOCK_GROUPS.map((group) => (
-                              <option key={group} value={group}>
-                                {group}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      ))}
-                    </fieldset>
-                  ) : null}
-                </div>
-              ) : null}
-
               {step === "review" ? (
                 <div className="flex flex-col gap-3">
                   <DryRunPreview plan={buildDryRunPlan(useCase, currentOptions())} />
@@ -456,7 +427,7 @@ export function InstallUseCaseButton({ useCase }: { useCase: UseCase }) {
                     ) : (
                       <Sparkles className="size-4" />
                     )}
-                    {isPending ? "Wird bereitgestellt…" : "Jetzt bereitstellen"}
+                    {isPending ? "Wird installiert…" : "Jetzt installieren"}
                   </Button>
                 ) : (
                   <Button
