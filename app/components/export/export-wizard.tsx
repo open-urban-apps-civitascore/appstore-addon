@@ -35,8 +35,24 @@ type CatalogDraft = {
   categories: string;
   maintainer: string;
   contact: string;
+  contactPerson: string;
   license: string;
 };
+
+/**
+ * One screenshot as the publisher submits it. `highlights` is free text with
+ * one point per line — every listing image must be explained by the commune
+ * that knows it; the catalog cannot invent what is on a picture.
+ */
+type ScreenshotDraft = {
+  url: string;
+  caption: string;
+  highlights: string;
+};
+
+const EMPTY_SCREENSHOT: ScreenshotDraft = { url: "", caption: "", highlights: "" };
+
+const MAX_SCREENSHOTS = 3;
 
 const EMPTY_DRAFT: CatalogDraft = {
   title: "",
@@ -44,8 +60,21 @@ const EMPTY_DRAFT: CatalogDraft = {
   categories: "",
   maintainer: "",
   contact: "",
+  contactPerson: "",
   license: "EUPL-1.2",
 };
+
+function highlightLines(value: string): string[] {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/** A screenshot counts as submitted once it has an image and at least one point. */
+function isComplete(screenshot: ScreenshotDraft): boolean {
+  return Boolean(screenshot.url.trim()) && highlightLines(screenshot.highlights).length > 0;
+}
 
 export function ExportWizard({
   inventory,
@@ -57,6 +86,15 @@ export function ExportWizard({
   const [step, setStep] = useState<Step>(1);
   const [selected, setSelected] = useState<string[]>(preselectedIds);
   const [draft, setDraft] = useState<CatalogDraft>(EMPTY_DRAFT);
+  const [screenshots, setScreenshots] = useState<ScreenshotDraft[]>([{ ...EMPTY_SCREENSHOT }]);
+
+  const completeScreenshots = screenshots.filter(isComplete);
+
+  function updateScreenshot(index: number, patch: Partial<ScreenshotDraft>) {
+    setScreenshots((current) =>
+      current.map((entry, position) => (position === index ? { ...entry, ...patch } : entry)),
+    );
+  }
 
   const byId = useMemo(() => new Map(inventory.map((entry) => [entry.id, entry])), [inventory]);
   const { included, added } = useMemo(
@@ -247,6 +285,113 @@ export function ExportWizard({
                 className="rounded-md border bg-background px-2.5 py-1.5 text-sm text-foreground"
               />
             </label>
+            {/* Optional by design: naming a person is personal data, so it stays
+                the publishing commune's choice — but a name is what makes a peer
+                actually pick up the phone. */}
+            {/* Every listing image must be explained by the commune that knows
+                it — the points land next to the screenshot in the catalog. */}
+            <fieldset className="flex flex-col gap-3 sm:col-span-2">
+              <legend className="pb-1 text-sm font-semibold text-foreground">
+                Screenshots * <span className="font-normal text-muted-foreground">
+                  (mindestens einer)
+                </span>
+              </legend>
+              <p className="-mt-1 text-xs text-muted-foreground">
+                Zeigen Sie das Ergebnis im Betrieb. Beschreiben Sie je Bild in Stichpunkten, was
+                darauf zu sehen ist — diese Punkte stehen im Katalog neben dem Screenshot.
+                Format 16:9, keine echten personenbezogenen Daten im Bild.
+              </p>
+
+              {screenshots.map((screenshot, index) => (
+                <div key={index} className="flex flex-col gap-2 rounded-md border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-foreground">Bild {index + 1}</span>
+                    {screenshots.length > 1 ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setScreenshots((current) =>
+                            current.filter((_, position) => position !== index),
+                          )
+                        }
+                        className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      >
+                        Entfernen
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                    Bilddatei oder URL *
+                    <input
+                      type="text"
+                      value={screenshot.url}
+                      onChange={(event) => updateScreenshot(index, { url: event.target.value })}
+                      placeholder="dashboard-wochenverlauf.png"
+                      className="rounded-md border bg-background px-2.5 py-1.5 text-sm text-foreground"
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                    Kurztitel
+                    <input
+                      type="text"
+                      value={screenshot.caption}
+                      onChange={(event) => updateScreenshot(index, { caption: event.target.value })}
+                      placeholder="Das Dashboard im Betrieb"
+                      className="rounded-md border bg-background px-2.5 py-1.5 text-sm text-foreground"
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                    Was ist auf diesem Bild zu sehen? * (ein Stichpunkt pro Zeile)
+                    <textarea
+                      value={screenshot.highlights}
+                      onChange={(event) =>
+                        updateScreenshot(index, { highlights: event.target.value })
+                      }
+                      rows={4}
+                      placeholder={
+                        "Wochenverlauf der Fahrzeugzahlen je Zählstelle\nTagesspitzen morgens und nachmittags\nDiese Ansicht zeigen wir dem Rat"
+                      }
+                      className="rounded-md border bg-background px-2.5 py-1.5 text-sm text-foreground"
+                    />
+                  </label>
+
+                  {screenshot.url.trim() && highlightLines(screenshot.highlights).length === 0 ? (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      Bitte mindestens einen Stichpunkt angeben — sonst steht das Bild im Katalog
+                      unerklärt.
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+
+              {screenshots.length < MAX_SCREENSHOTS ? (
+                <button
+                  type="button"
+                  onClick={() => setScreenshots((current) => [...current, { ...EMPTY_SCREENSHOT }])}
+                  className="w-fit rounded-md border border-dashed px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Weiteres Bild hinzufügen
+                </button>
+              ) : null}
+            </fieldset>
+
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground sm:col-span-2">
+              Ansprechperson (optional)
+              <input
+                type="text"
+                value={draft.contactPerson}
+                onChange={(event) => setDraft({ ...draft, contactPerson: event.target.value })}
+                placeholder="Name, Funktion — z. B. Maria Krause, Amt für Digitalisierung"
+                className="rounded-md border bg-background px-2.5 py-1.5 text-sm text-foreground"
+              />
+              <span className="text-[11px] text-muted-foreground">
+                Wird im Katalog öffentlich angezeigt. Nur angeben, wenn die Person zustimmt —
+                sonst reicht die Kontaktadresse der Stelle.
+              </span>
+            </label>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -256,11 +401,21 @@ export function ExportWizard({
             </Button>
             <Button
               onClick={() => setStep(3)}
-              disabled={!draft.title.trim() || !draft.summary.trim() || !draft.maintainer.trim()}
+              disabled={
+                !draft.title.trim() ||
+                !draft.summary.trim() ||
+                !draft.maintainer.trim() ||
+                completeScreenshots.length === 0
+              }
             >
               Vorschau
               <ArrowRight className="size-4" />
             </Button>
+            {completeScreenshots.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Mindestens ein Screenshot mit Beschreibung wird benötigt.
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -285,6 +440,34 @@ export function ExportWizard({
                 </>
               ) : null}
             </p>
+
+            {completeScreenshots.length > 0 ? (
+              <div className="mt-4 rounded-md border border-dashed p-3">
+                <p className="text-xs font-medium text-foreground">
+                  Screenshots ({completeScreenshots.length}) — so erscheinen sie im Katalog
+                </p>
+                <div className="mt-2 flex flex-col gap-3">
+                  {completeScreenshots.map((screenshot, index) => (
+                    <div key={index} className="text-xs">
+                      <p className="font-medium text-foreground">
+                        {screenshot.caption.trim() || `Bild ${index + 1}`}
+                      </p>
+                      <ul className="mt-1 flex list-none flex-col gap-1">
+                        {highlightLines(screenshot.highlights).map((line) => (
+                          <li key={line} className="flex items-start gap-2 text-muted-foreground">
+                            <span
+                              aria-hidden
+                              className="mt-1.5 size-1 shrink-0 rounded-full bg-border"
+                            />
+                            <span className="min-w-0">{line}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <ul className="mt-4 flex flex-col gap-2">
               {includedArtifacts.map((artifact) => (
