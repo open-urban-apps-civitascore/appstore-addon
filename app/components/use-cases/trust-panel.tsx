@@ -1,4 +1,4 @@
-import { BadgeCheck, Check, ExternalLink, MapPin, Scale, Wrench } from "lucide-react";
+import { BadgeCheck, Check, ExternalLink, MapPin, Scale, UserRound, Wrench } from "lucide-react";
 
 import { TierBadge } from "@/components/use-cases/use-case-status";
 import {
@@ -84,6 +84,36 @@ export function TrustPanel({
                 ) : (
                   trust.maintainer.name
                 )}
+              </dd>
+            </div>
+          </div>
+        ) : null}
+
+        {trust.contactPerson ? (
+          <div className="flex items-start gap-2.5">
+            <UserRound className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0">
+              <dt className="text-xs text-muted-foreground">Ansprechperson</dt>
+              <dd className="text-sm text-foreground">
+                <span className="font-medium">{trust.contactPerson.name}</span>
+                {trust.contactPerson.role ? (
+                  <span className="block text-xs text-muted-foreground">
+                    {trust.contactPerson.role}
+                  </span>
+                ) : null}
+                {trust.contactPerson.email ? (
+                  <a
+                    href={`mailto:${trust.contactPerson.email}`}
+                    className="block text-xs text-primary underline-offset-2 hover:underline"
+                  >
+                    {trust.contactPerson.email}
+                  </a>
+                ) : null}
+                {trust.contactPerson.phone ? (
+                  <span className="block text-xs text-muted-foreground">
+                    {trust.contactPerson.phone}
+                  </span>
+                ) : null}
               </dd>
             </div>
           </div>

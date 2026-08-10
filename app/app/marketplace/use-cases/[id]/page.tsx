@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Building2, Link2 } from "lucide-react";
 
 import { MarketplacePageShell } from "@/components/marketplace/page-shell";
+import { DemoDataHighlight } from "@/components/use-cases/demo-data-highlight";
 import { FitCheck } from "@/components/use-cases/fit-check";
 import { IncludedArtifactsSpec } from "@/components/use-cases/included-artifacts-spec";
 import { InstallUseCaseButton } from "@/components/use-cases/install-use-case-button";
@@ -116,6 +117,9 @@ export default async function UseCaseDetailPage({
 
         {/* Full-width 16:9 media band — renders only when screenshots exist. */}
         <UseCaseGallery useCase={useCase} />
+
+        {/* The reason trying is cheap — placed high, right after the pictures. */}
+        {useCase.demoData ? <DemoDataHighlight demoData={useCase.demoData} /> : null}
 
         {/* ── Fachlicher Teil: what it does, what you get, who vouches ───── */}
         <section className="rounded-md border bg-card p-6 lg:p-8">
