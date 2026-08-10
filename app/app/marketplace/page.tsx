@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Blocks, Search } from "lucide-react";
+import { ArrowRight, Blocks, Database, Search } from "lucide-react";
 
 import { CatalogFreshness } from "@/components/catalog/catalog-freshness";
 import { MarketplacePageShell } from "@/components/marketplace/page-shell";
@@ -33,7 +33,11 @@ export default async function MarketplacePage() {
           <p className="mt-2 text-base text-muted-foreground">{text.landing.subtitle}</p>
 
           {/* Plain GET form — lands on the use-case catalog with `?q=` prefilled. */}
-          <form action="/marketplace/use-cases" method="get" className="mt-5 flex max-w-xl gap-2">
+          <form
+            action="/marketplace/use-cases"
+            method="get"
+            className="mt-5 flex max-w-xl flex-col gap-2 sm:flex-row"
+          >
             <label className="relative block flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -45,7 +49,7 @@ export default async function MarketplacePage() {
             </label>
             <button
               type="submit"
-              className="inline-flex h-11 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              className="inline-flex h-11 shrink-0 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
             >
               {text.landing.searchButton}
             </button>
@@ -91,7 +95,7 @@ export default async function MarketplacePage() {
           )}
         </section>
 
-        <section>
+        <section className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <Link
             href="/marketplace/addons"
             className="group flex items-start gap-4 rounded-xl border bg-card p-5 transition-shadow hover:shadow-md"
@@ -106,6 +110,25 @@ export default async function MarketplacePage() {
               </span>
               <span className="mt-1 block text-sm text-muted-foreground">
                 {text.landing.addonsHint}
+              </span>
+            </span>
+          </Link>
+
+          <Link
+            href="/marketplace/datastructures"
+            className="group flex items-start gap-4 rounded-xl border bg-card p-5 transition-shadow hover:shadow-md"
+          >
+            <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+              <Database className="size-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="flex items-center gap-1.5 text-base font-semibold text-foreground">
+                {text.sidebar.nav.dataStructures}
+                <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+              </span>
+              <span className="mt-1 block text-sm text-muted-foreground">
+                Gemeinsame Datenformate — die Grundlage dafür, dass Auswertungen anderer
+                Kommunen auf Ihre Daten passen.
               </span>
             </span>
           </Link>
