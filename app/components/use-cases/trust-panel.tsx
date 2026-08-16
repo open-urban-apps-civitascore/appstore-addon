@@ -20,14 +20,23 @@ import type { TrustMetadata } from "@/types/use-cases";
  * The tier always renders; the remaining rows come from optional catalog
  * metadata that nothing authors or curates yet (hand-enriched entries only).
  */
+/**
+ * Add-on trust carries no production references — add-ons are generic platform
+ * components, so "which commune runs it" is a use-case concept. The panel
+ * renders that block only for listing types that have the field at all.
+ */
+type PanelTrust = Omit<TrustMetadata, "productionReferences"> &
+  Partial<Pick<TrustMetadata, "productionReferences">>;
+
 export function TrustPanel({
   tier,
   trust,
 }: {
   tier: CurationTier;
-  trust: TrustMetadata | undefined;
+  trust: PanelTrust | undefined;
 }) {
-  const hasReferences = (trust?.productionReferences.length ?? 0) > 0;
+  const references = trust?.productionReferences;
+  const hasReferences = (references?.length ?? 0) > 0;
 
   return (
     <section className="rounded-md border bg-card p-5">
@@ -119,6 +128,7 @@ export function TrustPanel({
           </div>
         ) : null}
 
+        {references ? (
         <div className="flex items-start gap-2.5">
           <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
@@ -126,7 +136,7 @@ export function TrustPanel({
             <dd className="mt-0.5 text-sm text-foreground">
               {hasReferences ? (
                 <ul className="flex flex-col gap-1">
-                  {trust.productionReferences.map((reference) => (
+                  {references.map((reference) => (
                     <li key={reference.municipality} className="font-medium">
                       {reference.url ? (
                         <a
@@ -157,6 +167,7 @@ export function TrustPanel({
             </dd>
           </div>
         </div>
+        ) : null}
 
         {trust.curatedBy ? (
           <div className="flex items-start gap-2.5">

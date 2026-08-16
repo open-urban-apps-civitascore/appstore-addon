@@ -49,7 +49,7 @@ export const AppHeader = async ({
 
           // 2. Redirect to Keycloak to destroy federated session
           const issuer = process.env.AUTH_KEYCLOAK_ISSUER;
-          const postLogoutUri = process.env.AUTH_URL || "http://localhost:3001";
+          const postLogoutUri = process.env.AUTH_URL || "http://localhost:3002";
 
           if (idToken && issuer) {
             redirect(`${issuer}/protocol/openid-connect/logout?id_token_hint=${idToken}&post_logout_redirect_uri=${encodeURIComponent(postLogoutUri)}`);

@@ -5,10 +5,11 @@
  * simulation (`portal-backend.ts`). Server-side only; the UI signals the mode
  * with a badge (app-header) and a catalog-freshness hint.
  *
- * There are deliberately only THREE consumer seams (everything else follows):
+ * There are deliberately only FOUR consumer seams (everything else follows):
  *   - repo-list `loadIndex()`            → fixture catalog
  *   - install `defaultInstallDeps()`     → mock client + bundle + store
  *   - use-case-installations store read  → mock install store
+ *   - addon-readme `fetchAddonReadme()`  → skipped (offline: no forge fetches)
  */
 export function isMockMode(): boolean {
   const value = process.env.MARKETPLACE_MOCK?.trim().toLowerCase();

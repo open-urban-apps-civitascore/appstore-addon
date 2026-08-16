@@ -33,6 +33,34 @@ const RAW_INDEX = {
         "Automation"
       ],
       "repository": "https://gitlab.com/bonn-624-dev/platform/nodered_addon",
+      "images": [
+        {
+          "url": "https://placehold.co/1600x900/e8eef7/3a5a7d.png?text=Platzhalter%0ADer+Flow-Editor+im+Betrieb",
+          "caption": "Der Flow-Editor im Betrieb",
+          "highlights": [
+            "Flows verbinden Sensoren, APIs und Datenbanken per Drag & Drop",
+            "Änderungen werden ohne Neustart übernommen",
+            "Debug-Ansicht zeigt Nachrichten in Echtzeit"
+          ]
+        },
+        {
+          "url": "https://placehold.co/1600x900/eef2f7/5a6b7d.png?text=Platzhalter%0AIm+CIVITAS%2FCORE-Portal",
+          "caption": "Das Add-on in der eigenen Instanz",
+          "highlights": [
+            "Anmeldung über Keycloak — dieselben Nutzer:innen wie im Core",
+            "Zugriff auf Plattformdaten über die REST-Schnittstelle"
+          ]
+        }
+      ],
+      "trust": {
+        "maintainer": {
+          "name": "bonn-624-dev",
+          "contactUrl": "https://gitlab.com/bonn-624-dev"
+        },
+        "curatedBy": "Civitas Connect e. V.",
+        "curatedAt": "2026-07-19",
+        "license": "EUPL-1.2"
+      },
       "compatibility": [
         {
           "coreVersion": "2.0"
@@ -351,7 +379,7 @@ const RAW_INDEX = {
     },
     {
       "id": "mittelerde-trafficcounter",
-      "title": "Verkehrszählung Mittelerde (Hobbit-Land)",
+      "title": "Verkehrszählung Mittelerde",
       "summary": "Verkehrszählung über Dialog-Displays: Fahrzeugzahlen und Geschwindigkeiten je Zählstelle als wiederverwendbares Use-Case-Paket.",
       "description": "Die Kommune Mittelerde erfasst mit Dialog-Displays (Smiley-Tafeln) Fahrzeugzahlen und Durchschnittsgeschwindigkeiten. Dieser Use-Case installiert die Datenstrukturen und den Datensatz dafür über das CivitasCore Portal-Backend. Die Artefakt-Quelle liegt in einem eigenen Git-Repo (siehe source); der Marketplace installiert direkt aus diesem Repo.",
       "publisher": "Kommune Mittelerde",

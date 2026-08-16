@@ -32,7 +32,7 @@ const step = (label: string, method: string, path: string, status: number) => ({
 const TRAFFICCOUNTER_INSTALL: InstalledUseCase = installedUseCaseSchema.parse({
   id: "seed-dataset-1",
   useCaseId: "mittelerde-trafficcounter",
-  useCaseTitle: "Verkehrszählung Mittelerde (Hobbit-Land)",
+  useCaseTitle: "Verkehrszählung Mittelerde",
   installedAt: "2026-07-15T13:47:00.000Z",
   status: "AVAILABLE",
   source: "portal-backend",

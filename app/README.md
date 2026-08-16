@@ -23,9 +23,9 @@ cd ../civitas-core-platform/dev-environment
    - **Client ID:** `marketplace-addon`
    - **Client authentication:** ON
    - **Valid redirect URIs:** 
-     - `http://localhost:3001/api/auth/callback/keycloak`
-     - `http://localhost:3001`
-   - **Valid post logout redirect URIs:** `http://localhost:3001`
+     - `http://localhost:3002/api/auth/callback/keycloak`
+     - `http://localhost:3002`
+   - **Valid post logout redirect URIs:** `http://localhost:3002`
    - Save the client.
 5. Go to the **Credentials** tab and copy the **Client Secret**.
 
@@ -78,7 +78,7 @@ pnpm install
 pnpm dev
 ```
 
-Open [http://localhost:3001](http://localhost:3001). You will be prompted to log in using the Civitas Keycloak instance.
+Open [http://localhost:3002](http://localhost:3002). You will be prompted to log in using the Civitas Keycloak instance.
 
 ### 6. Verify the Install Flow in the UI
 Use the following path:

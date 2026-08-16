@@ -9,16 +9,18 @@ function monogram(name: string): string {
 }
 
 /**
- * Add-on identity tile. Generic monogram by default (blue = platform/add-on
- * accent, distinct from the green use-case identity). A real `iconUrl` could
- * later render here instead — deferred (needs next/image remotePatterns config).
+ * Add-on identity tile. Generic monogram by default. Orange = add-on identity:
+ * the complementary colour to the CIVITAS blue #016AA1 (Ewa 2026-08-14),
+ * distinct from the green use-case identity and the blue primary actions.
+ * A real `iconUrl` could later render here instead — deferred (needs
+ * next/image remotePatterns config).
  */
 export function AddonIcon({ name, className }: { name: string; className?: string }) {
   return (
     <span
       aria-hidden="true"
       className={cn(
-        "grid size-11 shrink-0 place-items-center rounded-lg bg-primary/10 text-sm font-semibold text-primary",
+        "grid size-11 shrink-0 place-items-center rounded-lg bg-orange-500/10 text-sm font-semibold text-orange-700 dark:text-orange-400",
         className,
       )}
     >

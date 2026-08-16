@@ -5,20 +5,20 @@ import Image from "next/image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { UseCase } from "@/types/use-cases";
+import type { UseCaseImage } from "@/types/use-cases";
 
 /**
  * Screenshot band under the hero: the image takes two thirds, the remaining
  * third explains what is on it (Ewa, 2026-08-07) — the caption list doubles as
- * navigation, so a reader who only skims still learns what the use case looks
+ * navigation, so a reader who only skims still learns what the listing looks
  * like in operation. Renders nothing without screenshots; the hero then
- * carries a decorative illustration banner instead.
+ * carries a decorative illustration banner instead. Shared by use-case and
+ * add-on detail pages (both submit the same screenshot shape).
  *
  * Framing is applied uniformly by the UI; uploads should be raw 16:9 UI
  * screenshots without browser chrome (per app-store submission practice).
  */
-export function UseCaseGallery({ useCase }: { useCase: UseCase }) {
-  const images = useCase.images;
+export function UseCaseGallery({ images, title }: { images: UseCaseImage[]; title: string }) {
   const [index, setIndex] = useState(0);
 
   if (images.length === 0) return null;
@@ -35,7 +35,7 @@ export function UseCaseGallery({ useCase }: { useCase: UseCase }) {
           <Image
             key={current.url}
             src={current.url}
-            alt={current.caption ?? `${useCase.title} — Screenshot ${safeIndex + 1}`}
+            alt={current.caption ?? `${title} — Screenshot ${safeIndex + 1}`}
             width={1600}
             height={900}
             unoptimized

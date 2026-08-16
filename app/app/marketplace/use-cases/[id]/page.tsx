@@ -116,7 +116,7 @@ export default async function UseCaseDetailPage({
         </section>
 
         {/* Full-width 16:9 media band — renders only when screenshots exist. */}
-        <UseCaseGallery useCase={useCase} />
+        <UseCaseGallery images={useCase.images} title={useCase.title} />
 
         {/* The reason trying is cheap — placed high, right after the pictures. */}
         {useCase.demoData ? <DemoDataHighlight demoData={useCase.demoData} /> : null}

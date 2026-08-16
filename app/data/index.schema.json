@@ -56,6 +56,82 @@
             "type": "string",
             "format": "uri"
           },
+          "images": {
+            "default": [],
+            "description": "Screenshots with per-image caption and highlights — same submission shape as use-case screenshots",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string"
+                },
+                "caption": {
+                  "type": "string"
+                },
+                "highlights": {
+                  "default": [],
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "url"
+              ]
+            }
+          },
+          "trust": {
+            "description": "Who vouches for this add-on: maintainer, contact person, curation",
+            "type": "object",
+            "properties": {
+              "maintainer": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "contactUrl": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              },
+              "contactPerson": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              },
+              "curatedBy": {
+                "type": "string"
+              },
+              "curatedAt": {
+                "type": "string"
+              },
+              "license": {
+                "type": "string"
+              }
+            }
+          },
           "licenses": {
             "description": "Licenses shown in the UI: the add-on integration's own license and the wrapped tool's license",
             "type": "object",

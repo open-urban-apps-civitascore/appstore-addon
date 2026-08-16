@@ -65,6 +65,7 @@ export interface MarketplaceTexts {
   };
   detail: {
     createInstallPr: string;
+    installPrHint: string;
     openRepository: string;
     installPathLabel: string;
     addonLicense: string;
@@ -178,6 +179,8 @@ const MARKETPLACE_TEXT_DE: Omit<MarketplaceTexts, "locale"> = {
   },
   detail: {
     createInstallPr: "Create Install PR for my cluster",
+    installPrHint:
+      "Erzeugt einen Pull Request im Deployment-Repository der Instanz — die Installation führt der Betreiber aus.",
     openRepository: "Open repository",
     installPathLabel: "Installationsweg",
     addonLicense: "Add-on Lizenz",

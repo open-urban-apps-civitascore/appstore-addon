@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
 import { curationTierSchema, deprecationSchema, type CurationTier } from './curation-tier';
+// Shared listing machinery: add-ons use the same screenshot submission shape
+// and the same trust vocabulary as use cases (one gallery, one trust panel).
+import { trustMetadataSchema, useCaseImageSchema } from './use-cases';
 
 export const deploymentRefSchema = z.object({
   type: z
@@ -48,6 +51,18 @@ export const addonSchema = z.object({
     .describe("Free-form classification tags shown in the UI (e.g., 'Workflow', 'Storage')"),
   repository: z.string().url().optional().describe("URL of the add-on's source repository"),
   iconUrl: z.string().url().optional().describe('Optional URL to a logo or icon'),
+  images: z
+    .array(useCaseImageSchema)
+    .default([])
+    .describe(
+      'Screenshots with per-image caption and highlights — same submission shape as use-case screenshots'
+    ),
+  // Production references are a use-case concept: add-ons are generic platform
+  // components, so "which commune runs it" is not part of their trust story.
+  trust: trustMetadataSchema
+    .omit({ productionReferences: true })
+    .optional()
+    .describe('Who vouches for this add-on: maintainer, contact person, curation'),
   licenses: licensesSchema
     .optional()
     .describe("Licenses shown in the UI: the add-on integration's own license and the wrapped tool's license"),

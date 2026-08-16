@@ -100,7 +100,8 @@ export default async function MarketplacePage() {
             href="/marketplace/addons"
             className="group flex items-start gap-4 rounded-xl border bg-card p-5 transition-shadow hover:shadow-md"
           >
-            <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+            {/* Orange = add-on identity (complement of the CIVITAS blue). */}
+            <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-orange-500/10 text-orange-700 dark:text-orange-400">
               <Blocks className="size-5" />
             </span>
             <span className="min-w-0">
