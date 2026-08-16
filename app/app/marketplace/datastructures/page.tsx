@@ -20,9 +20,9 @@ export default function MarketplaceDataStructuresPage() {
     >
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
         <div className="max-w-3xl">
-          <p className="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
+          {/* <p className="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
             Entwurf — noch nicht funktionsfähig
-          </p>
+          </p> */}
           <h1 className="mt-1 text-3xl font-bold text-foreground">
             {text.sidebar.nav.dataStructures}
           </h1>

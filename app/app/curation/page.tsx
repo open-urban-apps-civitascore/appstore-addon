@@ -30,9 +30,9 @@ export default async function CurationPage() {
     <MarketplacePageShell breadcrumb="Kuratierung" tenantName="Stadt Musterstadt">
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {/* <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Entwurf — noch nicht funktionsfähig
-          </p>
+          </p> */}
           <h1 className="mt-1 text-3xl font-bold text-foreground">Einreichungen</h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
             Kommunen und Entwickler reichen Anwendungsfälle ein; vor der Aufnahme prüft eine Person
