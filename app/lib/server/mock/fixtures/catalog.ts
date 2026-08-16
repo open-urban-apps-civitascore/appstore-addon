@@ -440,7 +440,7 @@ const RAW_INDEX = {
       },
       "images": [
         {
-          "url": "https://placehold.co/1600x900/e8f4ee/34785a.png?text=Platzhalter%0ADas+Ergebnis+im+Betrieb",
+          "url": "/dashboard-platzhalter.png",
           "caption": "Das Dashboard im Betrieb",
           "highlights": [
             "Wochenverlauf der Fahrzeugzahlen je Zählstelle",
