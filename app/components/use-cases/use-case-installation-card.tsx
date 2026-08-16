@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarClock, Database, FileJson2, Link2, Share2, UsersRound } from "lucide-react";
+import { CalendarClock, Database, FileJson2, Link2, PackagePlus, UsersRound } from "lucide-react";
 
 import { ActivateInstalledUseCaseButton } from "@/components/use-cases/activate-installed-use-case-button";
 import { Badge } from "@/components/ui/badge";
@@ -58,8 +58,8 @@ export function UseCaseInstallationCard({
             href={`/export?from=${installation.useCaseId}`}
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
           >
-            <Share2 className="size-4" />
-            Teilen
+            <PackagePlus className="size-4" />
+            Beitragen
           </Link>
           <RemoveInstalledUseCaseButton useCaseId={installation.useCaseId} />
         </div>

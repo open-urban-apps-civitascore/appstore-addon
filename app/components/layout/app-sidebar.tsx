@@ -6,7 +6,7 @@ import {
   LayoutGrid,
   type LucideIcon,
   PackageCheck,
-  Share2,
+  PackagePlus,
   Sparkles,
 } from "lucide-react";
 
@@ -54,9 +54,12 @@ const getNavSections = (
           ],
         },
         { title: text.nav.installed, href: "/installed", icon: PackageCheck, count: installedCount },
-        // Sharing starts from the instance inventory, so it is a peer of
-        // "Installiert" rather than an action on one installation.
-        { title: "Teilen", href: "/export", icon: Share2 },
+        // Contributing starts from the instance inventory, so it is a peer of
+        // "Installiert" rather than an action on one installation. Deliberately
+        // not "Teilen": in a data platform that reads as sharing data, while
+        // what leaves here is the blueprint, never a row. PackagePlus mirrors
+        // PackageCheck above — same object, opposite direction.
+        { title: "Beitragen", href: "/export", icon: PackagePlus },
         // Curation belongs to Civitas Connect e. V. — a commune never sees it.
         ...(role === "curator"
           ? [{ title: "Kuratierung", href: "/curation", icon: ClipboardCheck }]

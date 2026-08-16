@@ -3,7 +3,7 @@ import { ExportWizard } from "@/components/export/export-wizard";
 import { getInstanceInventory } from "@/lib/instance-inventory";
 
 /**
- * Entry point for sharing something out of this instance.
+ * Entry point for contributing something out of this instance to the catalog.
  *
  * Starts from the instance inventory, not from an installation: what a
  * municipality wants to publish is usually something it modelled by hand, so
@@ -25,13 +25,13 @@ export default async function ExportPage({
     : [];
 
   return (
-    <MarketplacePageShell breadcrumb="Teilen" tenantName="Stadt Musterstadt">
+    <MarketplacePageShell breadcrumb="Beitragen" tenantName="Stadt Musterstadt">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
         <div>
           {/* <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Entwurf — noch nicht funktionsfähig
           </p> */}
-          <h1 className="mt-1 text-3xl font-bold text-foreground">Anwendungsfall teilen</h1>
+          <h1 className="mt-1 text-3xl font-bold text-foreground">Anwendungsfall beitragen</h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
             Aus dem, was in Ihrer Instanz läuft, wird ein portables Bündel für andere Kommunen. Sie
             wählen die Artefakte — ob Sie sie selbst modelliert oder aus dem Katalog installiert
