@@ -1,4 +1,4 @@
-import { FlaskConical, LayoutGrid, LogOut } from "lucide-react";
+import { LayoutGrid, LogOut } from "lucide-react";
 import { auth, signOut } from "@/auth";
 import { redirect } from "next/navigation";
 
@@ -23,14 +23,10 @@ export const AppHeader = async ({
       </div>
 
       <div className="flex shrink-0 items-center gap-3 sm:gap-4">
-        {isMockMode() ? (
-          // Unmistakable mock signal: never let demo data pass for a live backend.
-          <span className="flex items-center gap-1.5 rounded-full border border-amber-500/50 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-500">
-            <FlaskConical className="size-3.5" />
-            <span className="hidden sm:inline">Mock-Modus · Demo-Daten</span>
-            <span className="sm:hidden">Mock</span>
-          </span>
-        ) : (
+        {/* The mock badge lives with the demo controls in the sidebar footer.
+            Mock mode shows NOTHING here rather than falling through to
+            "Verbunden": demo data must never look like a live backend. */}
+        {isMockMode() ? null : (
           <span className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs text-muted-foreground">
             <span className="size-1.5 rounded-full bg-success" />
             <span className="hidden sm:inline">Verbunden · {connection}</span>

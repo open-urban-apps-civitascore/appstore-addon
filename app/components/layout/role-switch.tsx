@@ -1,9 +1,10 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
-import { Repeat2 } from "lucide-react";
+import { FlaskConical, Repeat2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { MOCK_ROLE_COOKIE, MOCK_ROLE_PROFILES, type MockRole } from "@/lib/mock-role";
+import { isMockMode } from "@/lib/server/mock/mode";
 
 const ROLES: MockRole[] = ["commune", "curator"];
 
@@ -49,6 +50,16 @@ export function RoleSwitch({ role }: { role: MockRole }) {
           </button>
         ))}
       </form>
+
+      {/* Unmistakable mock signal: never let demo data pass for a live backend.
+          It sits with the other demo controls rather than in the header, so
+          everything that only exists for the demo is in one place. */}
+      {isMockMode() ? (
+        <span className="mt-1 flex w-fit items-center gap-1.5 rounded-full border border-amber-500/50 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-500">
+          <FlaskConical className="size-3.5" />
+          Mock-Modus · Demo-Daten
+        </span>
+      ) : null}
     </div>
   );
 }
