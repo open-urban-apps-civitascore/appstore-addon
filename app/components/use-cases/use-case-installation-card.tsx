@@ -164,7 +164,7 @@ export function UseCaseInstallationCard({
         </section>
       ) : null}
 
-      {installation.provisioningTrace ? (
+      {/* {installation.provisioningTrace ? (
         <details className="rounded-md border bg-background p-4">
           <summary className="cursor-pointer text-sm font-medium text-foreground">
             Provisionierungsprotokoll anzeigen
@@ -197,7 +197,7 @@ export function UseCaseInstallationCard({
             ))}
           </ol>
         </details>
-      ) : null}
+      ) : null} */}
     </article>
   );
 }
