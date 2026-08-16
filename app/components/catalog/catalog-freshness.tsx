@@ -13,14 +13,14 @@ const formatWhen = (value: Date): string =>
 export async function CatalogFreshness() {
   const meta = await getRepoListMeta();
 
-  if (meta.origin === "mock") {
-    return (
-      <p className="inline-flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-500">
-        <FlaskConical className="size-3.5" />
-        Mock-Modus: Demo-Katalog · v{meta.version} (keine Live-Daten)
-      </p>
-    );
-  }
+  // if (meta.origin === "mock") {
+  //   return (
+  //     <p className="inline-flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-500">
+  //       <FlaskConical className="size-3.5" />
+  //       Mock-Modus: Demo-Katalog · v{meta.version} (keine Live-Daten)
+  //     </p>
+  //   );
+  // }
 
   if (meta.origin === "unconfigured") {
     return (

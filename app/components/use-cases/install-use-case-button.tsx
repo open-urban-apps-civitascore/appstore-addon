@@ -48,23 +48,23 @@ const DATA_SOURCE_CHOICES: {
   /** The recommended path: try the use case before touching own infrastructure. */
   featured?: boolean;
 }[] = [
-  {
-    value: "demo",
-    label: "Mit Demo-Daten starten",
-    hint: "Der Anwendungsfall läuft sofort mit mitgelieferten Beispieldaten — ohne eigene Sensoren, ohne Konfiguration. Ideal, um zu sehen, ob er zu Ihrer Kommune passt.",
-    featured: true,
-  },
-  {
-    value: "own",
-    label: "Eigene Datenquelle anbinden",
-    hint: "Verbindet den Anwendungsfall direkt mit Ihrem MQTT-Broker.",
-  },
-  {
-    value: "later",
-    label: "Später konfigurieren",
-    hint: "Installiert als Entwurf — die Datenquelle wird bei der Aktivierung eingerichtet.",
-  },
-];
+    {
+      value: "demo",
+      label: "Mit Demo-Daten starten",
+      hint: "Der Anwendungsfall läuft sofort mit mitgelieferten Beispieldaten — ohne eigene Sensoren, ohne Konfiguration. Ideal, um zu sehen, ob er zu Ihrer Kommune passt.",
+      featured: true,
+    },
+    {
+      value: "own",
+      label: "Eigene Datenquelle anbinden",
+      hint: "Verbindet den Anwendungsfall direkt mit Ihrem MQTT-Broker.",
+    },
+    {
+      value: "later",
+      label: "Später konfigurieren",
+      hint: "Installiert als Entwurf — die Datenquelle wird bei der Aktivierung eingerichtet.",
+    },
+  ];
 
 const GO_LIVE_CHOICES: { value: GoLive; label: string; hint: string }[] = [
   {
@@ -126,14 +126,14 @@ export function InstallUseCaseButton({ useCase }: { useCase: UseCase }) {
       dataSource:
         mode === "own"
           ? {
-              mode,
-              config: {
-                url: broker.url.trim(),
-                topic: broker.topic.trim(),
-                username: broker.username.trim() || undefined,
-                password: broker.password || undefined,
-              },
-            }
+            mode,
+            config: {
+              url: broker.url.trim(),
+              topic: broker.topic.trim(),
+              username: broker.username.trim() || undefined,
+              password: broker.password || undefined,
+            },
+          }
           : { mode },
       goLive: mode === "later" ? "release" : goLive,
       answers: {},
@@ -422,10 +422,8 @@ export function InstallUseCaseButton({ useCase }: { useCase: UseCase }) {
                 ) : null}
                 {isLastStep ? (
                   <Button onClick={handleInstall} disabled={isPending}>
-                    {isPending ? (
+                    {isPending && (
                       <LoaderCircle className="size-4 animate-spin" />
-                    ) : (
-                      <Sparkles className="size-4" />
                     )}
                     {isPending ? "Wird installiert…" : "Jetzt installieren"}
                   </Button>

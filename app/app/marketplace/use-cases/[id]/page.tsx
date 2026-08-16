@@ -69,49 +69,49 @@ export default async function UseCaseDetailPage({
             />
           ) : null}
           <div className="flex flex-col gap-4 p-6 lg:p-8">
-              {useCase.categories.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {useCase.categories.map((category) => (
-                    <span
-                      key={category}
-                      className="inline-flex items-center rounded-md bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400"
-                    >
-                      {category}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-              {/* Badge always directly below the title — inline placement made
-                  its position depend on whether the title wraps. */}
-              <div className="flex flex-col items-start gap-2">
-                <h1 className="text-3xl font-bold text-foreground lg:text-4xl">{useCase.title}</h1>
-                <TierBadge tier={useCase.curationTier} />
-              </div>
-              <p className="text-lg leading-relaxed text-muted-foreground">{useCase.summary}</p>
-
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <span className="flex items-center gap-2.5">
-                  <span className="grid size-9 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
-                    <Building2 className="size-4" />
+            {useCase.categories.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {useCase.categories.map((category) => (
+                  <span
+                    key={category}
+                    className="inline-flex items-center rounded-md bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400"
+                  >
+                    {category}
                   </span>
-                  <span className="flex flex-col leading-tight">
-                    <Link
-                      href={`/marketplace/publishers/${publisherSlug(useCase.publisher)}`}
-                      className="text-sm font-medium text-foreground underline-offset-2 hover:underline"
-                    >
-                      {useCase.publisher}
-                    </Link>
-                    <span className="text-xs text-muted-foreground">
-                      {text.useCases.publisherLabel}
-                    </span>
+                ))}
+              </div>
+            ) : null}
+            {/* Badge always directly below the title — inline placement made
+                  its position depend on whether the title wraps. */}
+            <div className="flex flex-col items-start gap-2">
+              <h1 className="text-3xl font-bold text-foreground lg:text-4xl">{useCase.title}</h1>
+              <TierBadge tier={useCase.curationTier} />
+            </div>
+            <p className="text-lg leading-relaxed text-muted-foreground">{useCase.summary}</p>
+
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span className="flex items-center gap-2.5">
+                <span className="grid size-9 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+                  <Building2 className="size-4" />
+                </span>
+                <span className="flex flex-col leading-tight">
+                  <Link
+                    href={`/marketplace/publishers/${publisherSlug(useCase.publisher)}`}
+                    className="text-sm font-medium text-foreground underline-offset-2 hover:underline"
+                  >
+                    {useCase.publisher}
+                  </Link>
+                  <span className="text-xs text-muted-foreground">
+                    {text.useCases.publisherLabel}
                   </span>
                 </span>
-              </div>
+              </span>
+            </div>
 
-              <div className="mt-1 flex w-full flex-col items-start gap-1.5">
-                <InstallUseCaseButton useCase={useCase} />
-                <p className="text-xs text-muted-foreground">{text.useCases.installDescription}</p>
-              </div>
+            <div className="mt-1 flex w-full flex-col items-start gap-1.5">
+              <InstallUseCaseButton useCase={useCase} />
+              <p className="text-xs text-muted-foreground">{text.useCases.installDescription}</p>
+            </div>
           </div>
         </section>
 
@@ -153,13 +153,13 @@ export default async function UseCaseDetailPage({
                 urn={useCase.modelForge.datasetId}
               />
 
-              <section className="rounded-md border bg-card p-5">
+              {/* <section className="rounded-md border bg-card p-5">
                 <div className="flex items-center gap-2">
                   <Link2 className="size-4 text-muted-foreground" />
                   <h3 className="text-sm font-semibold text-foreground">{text.useCases.datasetReference}</h3>
                 </div>
                 <p className="mt-3 text-sm text-muted-foreground">{useCase.modelForge.note}</p>
-              </section>
+              </section> */}
             </div>
 
             <aside className="flex flex-col gap-6">

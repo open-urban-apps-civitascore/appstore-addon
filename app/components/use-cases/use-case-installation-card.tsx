@@ -68,7 +68,7 @@ export function UseCaseInstallationCard({
       {/* Once the use case is live, show the working thing rather than an empty
           shell. Only for a running installation that declares a dashboard. */}
       {installation.status === "AVAILABLE" &&
-      surfaces.some((surface) => surface.kind === "dashboard") ? (
+        surfaces.some((surface) => surface.kind === "dashboard") ? (
         <DemoDataPreview
           title={
             surfaces.find((surface) => surface.kind === "dashboard")?.label ??
@@ -124,10 +124,10 @@ export function UseCaseInstallationCard({
           <span>Portal-Backend-DataSet</span>
         </div>
         <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{installation.id}</p>
-        <p className="mt-2 text-xs text-muted-foreground">
+        {/* <p className="mt-2 text-xs text-muted-foreground">
           Referenzierter CORE-Datensatz:{" "}
           <span className="break-all font-mono">{installation.datasetRef.datasetId}</span>
-        </p>
+        </p> */}
       </section>
 
       {installation.installAnswers && Object.keys(installation.installAnswers).length > 0 ? (
