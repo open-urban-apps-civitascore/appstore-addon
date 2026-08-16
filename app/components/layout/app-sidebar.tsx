@@ -1,4 +1,3 @@
-import Link from "next/link";
 import {
   ClipboardCheck,
   FileQuestion,
@@ -10,8 +9,8 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import { NavLink, SubNavLink } from "@/components/layout/nav-link";
 import { RoleSwitch } from "@/components/layout/role-switch";
-import { cn } from "@/lib/utils";
 import { getUseCases } from "@/lib/getUseCases";
 import { getMarketplaceText } from "@/lib/marketplace-text";
 import { getMockRole, MOCK_ROLE_PROFILES, type MockRole } from "@/lib/mock-role";
@@ -22,7 +21,6 @@ interface NavItem {
   href: string;
   icon: LucideIcon;
   count?: number;
-  active?: boolean;
   children?: { title: string; href: string }[];
 }
 
@@ -46,7 +44,6 @@ const getNavSections = (
           title: text.nav.marketplace,
           href: "/marketplace",
           icon: LayoutGrid,
-          active: true,
           children: [
             { title: `${text.nav.useCases} (${useCaseCount})`, href: "/marketplace/use-cases" },
             { title: text.nav.addons, href: "/marketplace/addons" },
@@ -120,14 +117,9 @@ export const AppSidebar = async ({
             </span>
             {section.items.map((item) => (
               <div key={item.title} className="flex flex-col">
-                <Link
+                <NavLink
                   href={item.href}
-                  className={cn(
-                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
-                    item.active
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent/60",
-                  )}
+                  childHrefs={item.children?.map((child) => child.href)}
                 >
                   <item.icon className="size-4 shrink-0" />
                   <span className="truncate">{item.title}</span>
@@ -136,17 +128,13 @@ export const AppSidebar = async ({
                       {item.count}
                     </span>
                   )}
-                </Link>
+                </NavLink>
                 {item.children && (
                   <div className="ml-4 mt-1 flex flex-col gap-1 border-l pl-3">
                     {item.children.map((child) => (
-                      <Link
-                        key={child.title}
-                        href={child.href}
-                        className="rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-                      >
+                      <SubNavLink key={child.title} href={child.href}>
                         {child.title}
-                      </Link>
+                      </SubNavLink>
                     ))}
                   </div>
                 )}
