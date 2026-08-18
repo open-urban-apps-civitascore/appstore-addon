@@ -1,0 +1,112 @@
+# Clickdummy — the mock-mode marketplace UI at clickdummy.dev.openurbanapps.org.
+#
+# Deliberately NOT wired through the CIVITAS add-on mechanism: in mock mode the
+# app is fully self-contained (no Keycloak — page-shell.tsx skips the sign-in
+# wall when isMockMode(), no portal-backend — everything runs on fixtures and
+# an in-memory install store). A plain Deployment + Service + Ingress is the
+# honest shape for that. It is also not a static site: server actions and the
+# role cookie need the Node server, which is why this is a container and not a
+# file drop.
+#
+# Prerequisites already in place on the cluster:
+#   - wildcard *.dev.openurbanapps.org → ingress LB (Cloudflare, DNS only)
+#   - nginx ingress class + cert-manager cluster issuer 'letsencrypt'
+#     (same pair the platform's own APISIX ingress uses)
+#
+# Deploy:  kubectl apply -f deployment/clickdummy.yaml
+# Image:   docker buildx build --platform linux/amd64 \
+#            -t ghcr.io/open-urban-apps-civitascore/clickdummy:v0.1.0 \
+#            app --push
+#          (MARKETPLACE_MOCK=1 is baked into the image — see app/Dockerfile.)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: clickdummy
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clickdummy
+  namespace: clickdummy
+  labels:
+    app.kubernetes.io/name: clickdummy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: clickdummy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: clickdummy
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        # The image's nextjs user (uid 1001), see app/Dockerfile.
+        runAsUser: 1001
+        runAsGroup: 1001
+      containers:
+        - name: app
+          image: ghcr.io/open-urban-apps-civitascore/clickdummy:v0.1.0
+          ports:
+            - name: http
+              containerPort: 3001
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickdummy
+  namespace: clickdummy
+spec:
+  selector:
+    app.kubernetes.io/name: clickdummy
+  ports:
+    - name: http
+      port: 80
+      # The addon app listens on 3001 (the real marketplace uses 3000) — the
+      # mismatch that would otherwise surface as a 502.
+      targetPort: 3001
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: clickdummy
+  namespace: clickdummy
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - clickdummy.dev.openurbanapps.org
+      secretName: clickdummy-tls
+  rules:
+    - host: clickdummy.dev.openurbanapps.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: clickdummy
+                port:
+                  name: http

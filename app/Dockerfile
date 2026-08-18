@@ -9,9 +9,13 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
-# 2. Build the app
+# 2. Build the app — pinned to mock mode: this image is the clickdummy
+# edition. isMockMode() reads the env at request time, but baking the value
+# into BOTH stages closes the gap where a prerendered path could freeze the
+# build-time value, and makes the image impossible to deploy un-mocked.
 FROM base AS builder
 WORKDIR /app
+ENV MARKETPLACE_MOCK=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm run build
@@ -20,6 +24,7 @@ RUN pnpm run build
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+ENV MARKETPLACE_MOCK=1
 ENV PORT=3001
 ENV HOSTNAME="0.0.0.0"
 
